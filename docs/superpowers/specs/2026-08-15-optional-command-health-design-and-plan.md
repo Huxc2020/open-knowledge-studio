@@ -1,18 +1,18 @@
-# Optional Command Health Semantics — Design and Implementation Plan
+# 可选命令健康状态语义——设计与实现计划
 
-> **For implementers:** Use `superpowers:test-driven-development` while changing the behavior and `superpowers:verification-before-completion` before claiming the fix is complete. The change is small enough to execute in one session; no parallel work is needed.
+> **给实现者：** 修改行为时使用 `superpowers:test-driven-development`，在宣称修复完成前使用 `superpowers:verification-before-completion`。本改动规模较小，可以在一个会话中完成，无需并行开发。
 
-**Goal:** Make `oks capability doctor` report a provider and the overall environment as healthy when only an explicitly optional command is missing, while preserving the failed optional check as diagnostic information.
+**目标：** 当某个 Provider 仅缺少明确标记为可选的命令时，让 `oks capability doctor` 仍将该 Provider 报告为健康；如果其他 Provider 也不存在必需检查失败，则整体环境同样报告为健康。同时保留失败的可选检查作为诊断信息。
 
-**Architecture:** Keep Provider parsing and the public doctor result unchanged. The fix belongs only in `capability_doctor()`'s aggregation rule: a failed check affects `healthy` and `overall` only when it is not a note and is not marked `required: false`. `_provider_status()` already follows this rule, so aligning the aggregation removes the current contradiction without adding a new abstraction.
+**架构：** 保持 Provider 解析逻辑和 doctor 的公共返回结构不变。修复只应发生在 `capability_doctor()` 的汇总规则中：仅当失败检查不是说明项，且未标记为 `required: false` 时，才影响 `healthy` 和 `overall`。`_provider_status()` 已经遵循这条规则，因此只需对齐汇总逻辑即可消除当前矛盾，无需引入新抽象。
 
-**Tech stack:** Python 3.12+, pytest, the existing `knowledge_studio.capability_commands` module.
+**技术栈：** Python 3.12+、pytest，以及现有的 `knowledge_studio.capability_commands` 模块。
 
-## 1. Problem and evidence
+## 1. 问题与证据
 
-`_check_provider_health()` records every command check. For entries under a Provider's `requirements.optional_commands`, it adds `required: false` to the check.
+`_check_provider_health()` 会记录所有命令检查。对于 Provider 中 `requirements.optional_commands` 下的命令，它会在检查结果中添加 `required: false`。
 
-`_provider_status()` respects that marker: it excludes a failed check when `required is False`. However, `capability_doctor()` currently treats every failed non-note check as a health failure. A Provider can therefore return contradictory fields such as:
+`_provider_status()` 尊重这一标记：当 `required is False` 时，它会排除该失败检查。但是，`capability_doctor()` 当前会把所有失败的非说明检查都视为健康问题。因此，一个 Provider 可能返回互相矛盾的字段：
 
 ```json
 {
@@ -29,86 +29,86 @@
 }
 ```
 
-This also changes the top-level result from `healthy` to `issues_found`, even though the missing dependency was explicitly declared optional.
+即使缺失的依赖已明确声明为可选项，顶层结果也会从 `healthy` 变成 `issues_found`。
 
-The existing `yt-dlp` Provider is the motivating case: `yt-dlp` is required and `ffmpeg` is optional. The tests should model that contract directly without depending on which binaries happen to be installed on the development machine.
+现有的 `yt-dlp` Provider 是最直接的场景：`yt-dlp` 是必需命令，`ffmpeg` 是可选命令。测试应直接模拟这一契约，不依赖开发机器上实际安装了哪些二进制程序。
 
-## 2. Desired behavior
+## 2. 目标行为
 
-For each health check, use the following rule:
+每项健康检查都应遵循以下规则：
 
-| Check result | Provider `healthy` | Affects top-level `overall` | Still included in `checks` |
+| 检查结果 | 该检查是否导致 Provider 不健康 | 是否将顶层 `overall` 置为 `issues_found` | 是否继续出现在 `checks` 中 |
 |---|---:|---:|---:|
-| Required check succeeds | Yes | No failure | Yes |
-| Required check fails | No | Yes | Yes |
-| Optional check succeeds | Yes | No failure | Yes |
-| Optional check fails | Yes | No failure | Yes |
-| Informational note | No change | No failure | Yes |
+| 必需检查成功 | 否 | 否 | 是 |
+| 必需检查失败 | 是 | 是 | 是 |
+| 可选检查成功 | 否 | 否 | 是 |
+| 可选检查失败 | 否 | 否 | 是 |
+| 说明项 | 否 | 否 | 是 |
 
-Concretely:
+具体规则如下：
 
-- A failed check is blocking only when `available is False`, its type is not `note`, and `required is not False`.
-- An optional failure remains visible with its original `available: false` and `required: false` values. It is diagnostic degradation, not a failed health state.
-- `capability_doctor()` keeps its current return schema and status vocabulary.
-- Required command failures continue to produce `healthy: false`, Provider status `unavailable`, and top-level `overall: issues_found`.
+- 只有同时满足以下条件的失败检查才具有阻断性：`available is False`、类型不是 `note`，并且 `required is not False`。
+- 可选检查失败时，原有的 `available: false` 和 `required: false` 必须继续保留。它表示诊断层面的能力降级，而不是健康状态失败。
+- `capability_doctor()` 保持当前返回结构和状态值集合不变。
+- 必需命令缺失时，仍然返回 `healthy: false`、Provider 状态 `unavailable`，以及顶层 `overall: issues_found`。
 
-## 3. Scope and non-goals
+## 3. 范围与非目标
 
-### In scope
+### 本次范围
 
-- Align `capability_doctor()`'s `healthy` and `overall` aggregation with the optional-check semantics already used by `_provider_status()`.
-- Add regression tests for an optional command failure and a required command failure.
-- Preserve failed optional checks in the returned diagnostics.
+- 将 `capability_doctor()` 中 `healthy` 和 `overall` 的汇总逻辑，与 `_provider_status()` 已采用的可选检查语义对齐。
+- 为“可选命令缺失”和“必需命令缺失”分别添加回归测试。
+- 在返回的诊断结果中保留失败的可选检查。
 
-### Out of scope
+### 非目标
 
-- Changing Provider YAML files or reclassifying any dependency.
-- Changing `_provider_status()` or its special-case Provider statuses.
-- Adding warning/degraded states or changing the JSON/text output schema.
-- Refactoring health checks into new classes or helpers.
-- Fixing the existing `oks capability probe` wording in the external-provider note.
-- Changing Python package/import-name mapping, metrics, installation behavior, or capability catalogs.
+- 修改 Provider YAML 或重新定义任何依赖是否必需。
+- 修改 `_provider_status()` 或其中针对特定 Provider 的状态分支。
+- 新增 warning/degraded 状态，或改变 JSON、文本输出结构。
+- 将健康检查重构为新的类或辅助函数。
+- 修复外部 Provider 说明中现有的 `oks capability probe` 文案。
+- 修改 Python 包名与导入名映射、指标、安装行为或能力目录。
 
-## 4. Compatibility and risks
+## 4. 兼容性与风险
 
-This is a behavioral correction with no interface migration. Consumers receive the same keys and the same individual checks. The only intentional differences are:
+这是一次不需要接口迁移的行为修正。调用方仍会收到相同的字段和相同的单项检查。唯一有意改变的结果是：
 
-- `providers[*].healthy` changes from `false` to `true` when all failures are explicitly optional.
-- `overall` changes from `issues_found` to `healthy` when no Provider has a required failure.
+- 当所有失败检查都明确属于可选项时，`providers[*].healthy` 从 `false` 变为 `true`。
+- 当所有 Provider 都不存在必需检查失败时，`overall` 从 `issues_found` 变为 `healthy`。
 
-The primary regression risk is accidentally ignoring required failures. A paired negative-control test prevents that. Tests must mock command discovery so results do not vary according to the developer or CI machine.
+主要回归风险是误把必需检查失败也忽略掉。为此，需要增加一项对应的负向对照测试。测试必须模拟命令发现结果，避免开发环境和 CI 环境中安装的软件不同而导致结果不稳定。
 
-## 5. Acceptance criteria
+## 5. 验收标准
 
-The change is complete when all of the following are true:
+满足以下全部条件后，才算完成本次改动：
 
-- A Provider with an available required command and an unavailable optional command has `status == "ready"` and `healthy is True`.
-- Its unavailable optional check remains present with `available is False` and `required is False`.
-- When it is the only Provider, the doctor result has `overall == "healthy"`.
-- A Provider with an unavailable required command has `status == "unavailable"`, `healthy is False`, and top-level `overall == "issues_found"`.
-- The targeted regression tests and the full pytest suite pass.
-- Wheel/sdist content validation passes and the build does not alter tracked files.
+- 当 Provider 的必需命令可用、可选命令不可用时，返回 `status == "ready"` 且 `healthy is True`。
+- 不可用的可选检查仍保留在结果中，并且 `available is False`、`required is False`。
+- 当它是唯一 Provider 时，doctor 顶层结果为 `overall == "healthy"`。
+- 当 Provider 的必需命令不可用时，返回 `status == "unavailable"`、`healthy is False`，且顶层结果为 `overall == "issues_found"`。
+- 定向回归测试和完整 pytest 测试套件全部通过。
+- Wheel/sdist 内容校验通过，构建过程不会修改已跟踪文件。
 
-## 6. File map
+## 6. 文件变更范围
 
-- Create `cli/tests/test_capability_commands.py`: deterministic regression coverage for doctor aggregation.
-- Modify `cli/knowledge_studio/capability_commands.py`: exclude explicitly optional failed checks from the health failure predicate in `capability_doctor()`.
+- 新建 `cli/tests/test_capability_commands.py`：为 doctor 汇总逻辑提供不依赖本机环境的回归测试。
+- 修改 `cli/knowledge_studio/capability_commands.py`：在 `capability_doctor()` 的失败判断中排除明确标记为可选的失败检查。
 
-No other production files should change.
+不应修改其他生产代码文件。
 
-## 7. Implementation plan
+## 7. 实现计划
 
-### Task 1: Add regression coverage and align doctor aggregation
+### 任务 1：添加回归测试并对齐 doctor 汇总逻辑
 
-**Files:**
+**涉及文件：**
 
-- Create: `cli/tests/test_capability_commands.py`
-- Modify: `cli/knowledge_studio/capability_commands.py:338-354`
-- Test: `cli/tests/test_capability_commands.py`
+- 新建：`cli/tests/test_capability_commands.py`
+- 修改：`cli/knowledge_studio/capability_commands.py:338-354`
+- 测试：`cli/tests/test_capability_commands.py`
 
-#### Step 1: Prepare an isolated development environment if needed
+#### 步骤 1：按需准备隔离的开发环境
 
-From the repository root:
+在仓库根目录执行：
 
 ```bash
 python3 -m venv .venv
@@ -116,11 +116,11 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e ./cli pytest requests build
 ```
 
-Expected result: installation exits with status 0 and imports the package from this checkout. `.venv/` remains ignored by Git.
+预期结果：安装命令以状态码 0 退出，并且 Python 从当前工作区导入本项目包。`.venv/` 继续被 Git 忽略。
 
-#### Step 2: Write the failing tests
+#### 步骤 2：先编写失败测试
 
-Create `cli/tests/test_capability_commands.py` with tests that exercise the real `_check_provider_health()` and `capability_doctor()` aggregation while replacing only Provider discovery and machine-dependent command lookup:
+新建 `cli/tests/test_capability_commands.py`。测试应使用真实的 `_check_provider_health()` 和 `capability_doctor()` 汇总逻辑，只替换 Provider 发现和依赖本机环境的命令查找：
 
 ```python
 from knowledge_studio import capability_commands
@@ -197,21 +197,21 @@ def test_required_command_failure_still_marks_doctor_unhealthy(
     assert result["overall"] == "issues_found"
 ```
 
-This setup deliberately avoids invoking real executables. It also verifies that `_check_provider_health()` adds `required: false` rather than merely testing a fabricated final check list.
+这种写法不会调用真实的系统命令。它还会验证 `_check_provider_health()` 确实添加了 `required: false`，而不是仅测试人工构造的最终检查列表。
 
-#### Step 3: Run the tests and confirm the regression is reproduced
+#### 步骤 3：运行测试并确认能够复现问题
 
 ```bash
 .venv/bin/python -m pytest cli/tests/test_capability_commands.py -q
 ```
 
-Expected result before the production change: the optional-command test fails at `assert provider_result["healthy"] is True` because the actual value is `False`. The required-command control test passes.
+修改生产代码之前的预期结果：可选命令测试在 `assert provider_result["healthy"] is True` 处失败，因为实际值为 `False`；必需命令对照测试通过。
 
-If the optional-command test passes before modifying production code, stop and inspect the checkout instead of continuing; the assumed defect is no longer present.
+如果尚未修改生产代码，但可选命令测试已经通过，应停止实施并重新检查当前工作区，不能继续按已失效的问题假设修改代码。
 
-#### Step 4: Implement the smallest behavior change
+#### 步骤 4：实施最小行为修改
 
-In `capability_doctor()`, replace the broad `has_failure` predicate with a required-failure predicate:
+在 `capability_doctor()` 中，将宽泛的 `has_failure` 判断替换为只判断必需检查失败的逻辑：
 
 ```python
 has_required_failure = any(
@@ -224,25 +224,25 @@ if has_required_failure:
     all_healthy = False
 ```
 
-Use `not has_required_failure` for the Provider's `healthy` field. Do not modify the check list or `_provider_status()`.
+Provider 的 `healthy` 字段改为使用 `not has_required_failure`。不要修改检查列表或 `_provider_status()`。
 
-#### Step 5: Run the targeted tests
+#### 步骤 5：运行定向测试
 
 ```bash
 .venv/bin/python -m pytest cli/tests/test_capability_commands.py -q
 ```
 
-Expected result: `2 passed` and exit status 0.
+预期结果：显示 `2 passed`，并以状态码 0 退出。
 
-#### Step 6: Run the full behavioral test suite
+#### 步骤 6：运行完整行为测试套件
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
 
-Expected result: exit status 0 with no failed tests.
+预期结果：没有失败测试，并以状态码 0 退出。
 
-#### Step 7: Validate package artifacts and repository cleanliness
+#### 步骤 7：验证构建产物和仓库状态
 
 ```bash
 git status --porcelain
@@ -252,18 +252,18 @@ git status --porcelain
 git diff --check
 ```
 
-Expected results:
+预期结果：
 
-- Both status snapshots list the same intended source and test files plus this planning document; the build itself adds no tracked change.
-- The build exits with status 0.
-- `check_dist.py` exits with status 0.
-- `git diff --check` prints nothing and exits with status 0.
+- 两次状态快照只列出计划内的源代码、测试文件和本文档；构建过程本身没有产生新的已跟踪文件变更。
+- 构建命令以状态码 0 退出。
+- `check_dist.py` 以状态码 0 退出。
+- `git diff --check` 不输出任何内容，并以状态码 0 退出。
 
-If any additional tracked file changes, stop and inspect it rather than including it in this fix.
+如果出现其他已跟踪文件变更，应停止并检查其来源，不能将它直接纳入本次修复。
 
-#### Step 8: Review and commit the implementation
+#### 步骤 8：审阅并提交实现
 
-Review the final diff, then stage only the implementation and regression test:
+检查最终差异，然后只暂存实现代码和回归测试：
 
 ```bash
 git diff -- cli/knowledge_studio/capability_commands.py cli/tests/test_capability_commands.py
@@ -271,14 +271,14 @@ git add cli/knowledge_studio/capability_commands.py cli/tests/test_capability_co
 git commit -m "fix(capability): ignore missing optional commands in health status"
 ```
 
-Expected result: one focused commit containing one production-code change and the two regression tests. Do not push or create a Pull Request without the user's separate, explicit authorization.
+预期结果：生成一个聚焦的提交，只包含一处生产代码修改和两项回归测试。未经用户针对该操作的单独明确授权，不得推送或创建 Pull Request。
 
-## 8. Pull Request handoff
+## 8. Pull Request 交付说明
 
-Suggested PR title:
+建议的 PR 标题：
 
 ```text
 fix(capability): ignore missing optional commands in health status
 ```
 
-The PR description should state the before/after semantic difference, mention that optional failures remain visible in `checks`, and list the targeted pytest, full pytest, and package validation results. It should not claim changes to installation, Provider definitions, or capability probing.
+PR 描述应说明修改前后的语义差异，指出可选失败仍会保留在 `checks` 中，并列出定向 pytest、完整 pytest 和打包校验结果。不要声称本次改动涉及安装方式、Provider 定义或能力探测。
