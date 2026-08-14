@@ -361,18 +361,20 @@ def capability_doctor(root: Path | None = None) -> dict[str, Any]:
     for p in providers:
         pid = p.get("id", p.get("_dir", "unknown"))
         checks = _check_provider_health(p)
-        has_failure = any(
-            c.get("available") is False for c in checks
-            if c.get("type") not in ("note",)
+        has_required_failure = any(
+            c.get("available") is False
+            and c.get("type") != "note"
+            and c.get("required") is not False
+            for c in checks
         )
-        if has_failure:
+        if has_required_failure:
             all_healthy = False
 
         results.append({
             "id": pid,
             "label": p.get("label", pid),
             "execution": p.get("execution", "unknown"),
-            "healthy": not has_failure,
+            "healthy": not has_required_failure,
             "status": _provider_status(checks, pid, p.get("execution", "unknown")),
             "checks": checks,
         })
