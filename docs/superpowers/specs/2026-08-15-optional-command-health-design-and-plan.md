@@ -2,7 +2,7 @@
 
 > **给实现者：** 修改行为时使用 `superpowers:test-driven-development`，在宣称修复完成前使用 `superpowers:verification-before-completion`。本改动规模较小，可以在一个会话中完成，无需并行开发。
 
-**目标：** 当某个 Provider 仅缺少明确标记为可选的命令时，让 `oks capability doctor` 仍将该 Provider 报告为健康；如果其他 Provider 也不存在必需检查失败，则整体环境同样报告为健康。同时保留失败的可选检查作为诊断信息。
+**目标：** 当某个 Provider 仅缺少明确标记为可选的命令时，让 `capability_doctor()` 仍将该 Provider 报告为健康；如果其他 Provider 也不存在必需检查失败，则整体环境同样报告为健康。同时保留失败的可选检查作为诊断信息。
 
 **架构：** 保持 Provider 解析逻辑和 doctor 的公共返回结构不变。修复只应发生在 `capability_doctor()` 的汇总规则中：仅当失败检查不是说明项，且未标记为 `required: false` 时，才影响 `healthy` 和 `overall`。`_provider_status()` 已经遵循这条规则，因此只需对齐汇总逻辑即可消除当前矛盾，无需引入新抽象。
 
@@ -66,7 +66,7 @@
 - 修改 `_provider_status()` 或其中针对特定 Provider 的状态分支。
 - 新增 warning/degraded 状态，或改变 JSON、文本输出结构。
 - 将健康检查重构为新的类或辅助函数。
-- 修复外部 Provider 说明中现有的 `oks capability probe` 文案。
+- 修复外部 Provider 说明中现有的 `capability probe` 文案。
 - 修改 Python 包名与导入名映射、指标、安装行为或能力目录。
 
 ## 4. 兼容性与风险
