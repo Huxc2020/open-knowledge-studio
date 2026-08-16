@@ -1,5 +1,68 @@
 # Changelog
 
+## v0.5.9 (2026-08-17)
+
+### 可插拔 search backend 架构
+
+- **SearchBackend Protocol**（`cli/knowledge_studio/search/`）：第三方包通过
+  `entry_points(group="oks_search_backend")` 注册 search backend，OKS 核心不改，
+  recall 切 `--search-backend <name>` 即用
+- 3 个内置 backend：
+  - `native`（默认）：6+1 因子（jieba + IDF + title boost）
+  - `fts5`：SQLite FTS5 + BM25 + column weights（title 5x > tags 3x > body 1x >
+    code 0.5x）+ 增量 diff content_hash + 持久化 `.oks/fts5.db` + LIKE fallback
+  - `fusion`：native top-3 主 + fts5 独有补 2（实验验证最优，RRF 伤 R@1）
+- `oks recall --search-backend <name>` + `OKS_SEARCH_BACKEND` envvar
+
+### CV TreeSearch 纯函数到 recall.py
+
+- `estimate_idf`：平滑 IDF `log((N+1)/(df+1))+1`
+- `compute_term_overlap`：IDF 加权 token overlap，bonus 加在 count×0.3 之上
+- `check_title_match`：query term 逐个命中 title，+0.3/个
+- `is_generic_page`：通用目录性页（index/overview/readme/目录/概述...）×0.5 降权
+- 效果：baseline R@1 0.333→0.400，MRR 0.472→0.506
+
+### lazy watch（FTS5 无守护进程刷新）
+
+- `_wiki_fingerprint()`：stat-only（path, mtime_ns, size）
+- `_maybe_reindex()`：recall 前比对 fingerprint，变了才增量重索引
+- meta 表存 wiki_fingerprint 跨进程
+- 速度：首次 552ms | 不变 3ms | 变 1 页 41ms
+
+### PostToolUse recall 补位（长任务盲区）
+
+- **post-tool-edit.py 新版**（367 行）：文件冲突检测 + recall 补位段
+  （`_query_from_tool` + `_recall_supplement`）
+- query 来自工具操作（Edit/Write/Read→file stem；Bash→command；Grep/Glob→pattern）
+- 高 floor 0.9 + 低 topn 2 + 共享 cooldown + inject trace source=posttool
+- `OKS_POSTTOOL_FLOOR` / `OKS_POSTTOOL_TOPN` env
+
+### pi extension（oks-posttool-recall.ts）
+
+- `.pi/extensions/oks-posttool-recall.ts`：监听 `tool_result`（pi 的 PostToolUse 等价）
+- `_kbRoot()` 解析 OKS_ROOT / config → KB 实例（不依赖 process.cwd()）
+- query-level cooldown 预检查（同 query 10 轮 0ms 跳过 Python）
+- 真实注入验证：Bash/Edit → OSS call chain / AI agent 记忆（rel 3.17/2.741）
+
+### oks-connector-code（独立包）
+
+- AST 解析 raw/*.py，函数/类级召回（FunctionDef/AsyncFunctionDef/ClassDef）
+- token overlap：name hit 5x body hit
+- `entry_points(group="oks_search_backend", name="code")`
+- 独立仓库 `oks-connector-code`
+
+### 文档 + 实验
+
+- algorithms/oks-effectiveness.md：11 节（召回评估 / 记忆腐化 / 注入分布 /
+  PostToolUse 冲突 / TreeSearch 融合 / CV / search backend / is_generic / lazy watch）
+- fig1-5 实验图表
+- docs/cli.md + recall-engine.md + context-injection.md 更新
+
+### PostToolUse 测试结论
+
+三层注入全部工作：UserPromptSubmit ✅ + PostToolUse recall ✅ + PostToolUse 冲突 ✅
+20 次真实注入，11 个不同 wiki 命中，floor=0.9 + topn=2 控制不淹没
+
 ## v0.4.0 (2026-08-09)
 
 首个进入 PyPI 的 v0.4 版本（上一个发布版本是 0.2.4）。核心是 Agent-Native
