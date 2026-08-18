@@ -194,6 +194,8 @@ def test_codex_posttool_apply_patch_records_files_and_emits_json_context(tmp_pat
 def test_codex_pretooluse_blocks_invalid_added_wiki_patch(tmp_path):
     target = _init_instance(tmp_path)
     script = target / ".codex" / "hooks" / "validate-wiki-write.sh"
+    baked_python = f'${{OKS_PYTHON:-{sys.executable}}}'
+    assert baked_python in script.read_text(encoding="utf-8")
     invalid_patch = "\n".join(
         [
             "*** Begin Patch",
@@ -290,6 +292,8 @@ def test_codex_pretooluse_blocks_invalid_added_wiki_patch(tmp_path):
 def test_codex_precompact_emits_json_system_message_and_saves_snapshot(tmp_path):
     target = _init_instance(tmp_path)
     script = target / ".codex" / "hooks" / "pre-compact.sh"
+    baked_python = f'${{OKS_PYTHON:-{sys.executable}}}'
+    assert baked_python in script.read_text(encoding="utf-8")
     result = _run_hook(
         script,
         {

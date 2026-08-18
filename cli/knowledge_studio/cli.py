@@ -1769,6 +1769,7 @@ def _materialize_assets(root: Path, base: Path, overwrite: bool) -> list[str]:
                 wrote |= copy_into(src, dest / component)
         if wrote:
             done.append(dest_name)
+    _bake_codex_lifecycle_hooks(root)
     return done
 
 
@@ -1923,6 +1924,38 @@ _CODEX_LIFECYCLE_SCRIPTS = (
     "pre-compact.sh",
     "session-start.sh",
 )
+
+
+def _bake_codex_lifecycle_hooks(root: Path) -> None:
+    """Bake the active Python interpreter into Codex lifecycle hooks.
+
+    Codex invokes these hooks through Bash. On Windows/Git Bash, resolving
+    ``python3`` at runtime can select a launcher that exits successfully for
+    a probe but cannot execute the hook payload. The absolute interpreter used
+    to run ``oks init`` is already known to import the package, so use it as
+    the hook fallback just like the recall wrappers do.
+    """
+    import sys
+
+    hooks_dir = root / ".codex" / "hooks"
+    baked = f'"${{OKS_PYTHON:-{sys.executable}}}"'
+    markers = (
+        '"${OKS_PYTHON:-python3}"',
+        '"${OKS_PYTHON:-}"',
+    )
+    for name in _CODEX_LIFECYCLE_SCRIPTS:
+        dest = hooks_dir / name
+        if not dest.is_file():
+            continue
+        try:
+            text = dest.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        updated = text
+        for marker in markers:
+            updated = updated.replace(marker, baked)
+        if updated != text:
+            dest.write_text(updated, encoding="utf-8")
 
 
 def _hook_command_matches_script(command: str, script_name: str) -> bool:
@@ -2445,6 +2478,9 @@ def hook_install(
     if not root.is_dir():
         console.print(f"[red]Instance root not found:[/red] {root}")
         raise typer.Exit(1)
+
+    if editor == "codex":
+        _bake_codex_lifecycle_hooks(root)
 
     editors = ("claude", "qoder") if editor == "both" else (editor,)
 

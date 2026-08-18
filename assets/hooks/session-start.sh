@@ -4,9 +4,23 @@
 
 set -euo pipefail
 
+OKS_PYTHON_CMD="${OKS_PYTHON:-python3}"
+if [ -z "${OKS_PYTHON:-}" ] && [ "$OKS_PYTHON_CMD" = "python3" ]; then
+    case "$(uname -s 2>/dev/null || true)" in
+        MINGW*|MSYS*|CYGWIN*) OKS_PYTHON_CMD="python" ;;
+    esac
+fi
+if ! "$OKS_PYTHON_CMD" -c 'import sys' >/dev/null 2>&1; then
+    if [ -z "${OKS_PYTHON:-}" ] && [ "$OKS_PYTHON_CMD" != "python" ] && python -c 'import sys' >/dev/null 2>&1; then
+        OKS_PYTHON_CMD="python"
+    else
+        OKS_PYTHON_CMD=""
+    fi
+fi
+
 REPO_ROOT="${OKS_ROOT:-}"
-if [ -z "$REPO_ROOT" ]; then
-    REPO_ROOT="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.oks/config.json'))).get('knowledge_base_path',''))" 2>/dev/null || true)"
+if [ -z "$REPO_ROOT" ] && [ -n "$OKS_PYTHON_CMD" ]; then
+    REPO_ROOT="$("$OKS_PYTHON_CMD" -c "import json,os;print(json.load(open(os.path.expanduser('~/.oks/config.json'))).get('knowledge_base_path',''))" 2>/dev/null || true)"
 fi
 if [ -z "$REPO_ROOT" ]; then
     REPO_ROOT="$(pwd)"
