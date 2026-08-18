@@ -215,7 +215,11 @@ def test_codex_pretooluse_blocks_invalid_added_wiki_patch(tmp_path):
         },
         target,
     )
-    assert blocked.returncode == 2
+    assert blocked.returncode == 2, (
+        f"returncode={blocked.returncode}; "
+        f"stdout={blocked.stdout.encode('unicode_escape').decode()}; "
+        f"stderr={blocked.stderr.encode('unicode_escape').decode()}"
+    )
     assert "frontmatter" in blocked.stderr
 
     valid_patch = "\n".join(
@@ -307,7 +311,11 @@ def test_codex_precompact_emits_json_system_message_and_saves_snapshot(tmp_path)
         target,
     )
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 0, (
+        f"returncode={result.returncode}; "
+        f"stdout={result.stdout.encode('unicode_escape').decode()}; "
+        f"stderr={result.stderr.encode('unicode_escape').decode()}"
+    )
     output = json.loads(result.stdout)
     assert output["systemMessage"].startswith("Snapshot saved:")
     assert list((target / ".oks" / "snapshots").glob("pre-compact-*.md"))
