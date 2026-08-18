@@ -559,7 +559,7 @@ def recall_cmd(
     project: Optional[str] = typer.Option(None, "--project", envvar="OKS_PROJECT", help="Current project slug; required to recall profiles/projects/<slug> (A2 scope)"),
     type_filter: Optional[str] = typer.Option(None, "--type", "-t", help="Restrict the knowledge path to one wiki type"),
     knowledge_only: bool = typer.Option(False, "--knowledge-only", help="Skip the episodic path — only wiki/ results, no raw/ source material"),
-    search_backend: str = typer.Option("native", "--search-backend", help="Search backend: native | fts5 | fusion | <connector-name> (connector via entry_points group=oks_search_backend)"),
+    search_backend: str = typer.Option(None, "--search-backend", help="Search backend: native | fts5 | fusion | <connector-name> (默认读 settings/recall.yaml，显式传值优先)"),
     floor_override: Optional[float] = typer.Option(None, "--floor", help="临时调 floor（不改 settings/recall.yaml，一次性）"),
 ):
     """Two-path recall: episodic (raw/) + knowledge (wiki/).

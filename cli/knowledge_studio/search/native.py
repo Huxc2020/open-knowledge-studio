@@ -33,6 +33,7 @@ class NativeBackend:
             limit=limit,
             scope=scope,
             knowledge_only=True,
+            search_backend="legacy",  # 强制 6+1，避免 fusion 递归
             **recall_kwargs,
         )
         return [

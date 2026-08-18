@@ -85,6 +85,47 @@ def _parse_md(text: str) -> tuple[str, str, str]:
     return front_matter, body, "\n".join(code_parts)
 
 
+# v0.6.0: 吸收 TreeSearch 的 markdown tree parser（node-level 拆分）。
+# CV source: TreeSearch `_extract_md_headings` + `_cut_md_text`。
+# 把 body 按 `#` heading 切成 nodes；每个 node = heading + 该段正文。
+# 无 heading 的 body 作为单一 node。code fence 内的假 heading 跳过。
+_RE_HEADING = re.compile(r"^(#{1,6})\s+(.+)$")
+_RE_CODE_FENCE = re.compile(r"^```")
+
+
+def _split_md_nodes(title: str, body: str) -> list[tuple[int, str]]:
+    """title + body → [(node_idx, node_text), ...]（node-level, CV from TreeSearch）。
+
+    - 首个 node 是 page title + title 下的引言段（第一个 heading 前的文本）
+    - 后续每个 `#`/`##` heading 开一个新 node：heading 行 + 该 heading 到下一 heading 间的正文
+    - code fence 内的假 heading 跳过（防误切）
+    """
+    if not body and not title:
+        return [(0, "")]
+    full = f"# {title}\n\n{body}" if title else body
+    lines = full.split("\n")
+    markers: list[dict] = []
+    in_code = False
+    for num, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if _RE_CODE_FENCE.match(stripped):
+            in_code = not in_code
+            continue
+        if in_code or not stripped:
+            continue
+        m = _RE_HEADING.match(stripped)
+        if m:
+            markers.append({"line_num": num})
+    if not markers:
+        return [(0, full.strip())]
+    nodes: list[tuple[int, str]] = []
+    for i, mk in enumerate(markers):
+        start = mk["line_num"] - 1
+        end = markers[i + 1]["line_num"] - 1 if i + 1 < len(markers) else len(lines)
+        nodes.append((i, "\n".join(lines[start:end]).strip()))
+    return nodes
+
+
 class FTS5Backend:
     """SQLite FTS5 全文检索 backend（CV from TreeSearch FTS5Index, 平铺版）。
 
@@ -117,6 +158,21 @@ class FTS5Backend:
     def _init_db(self) -> None:
         if self._db_path != ":memory:":
             os.makedirs(os.path.dirname(os.path.abspath(self._db_path)), exist_ok=True)
+        # v0.6.0: schema version 检测——node-level schema 不匹配则强制重建
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)"
+        )
+        cur = self._conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()
+        if cur and cur[0] != "node-v1":
+            # 旧 schema（flat page-level），DROP 重建
+            self._conn.execute("DROP TABLE IF EXISTS wiki_fts")
+            self._conn.execute("DROP TABLE IF EXISTS pages")
+            self._conn.execute("DELETE FROM meta WHERE key='schema_version'")
+        self._conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', 'node-v1')"
+        )
         # pages 表存 content_hash 做 diff（不存全文，全文在 fts 表）
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS pages (slug TEXT PRIMARY KEY, content_hash TEXT)"
@@ -127,7 +183,7 @@ class FTS5Backend:
         if self._use_fts5:
             self._conn.execute(
                 "CREATE VIRTUAL TABLE IF NOT EXISTS wiki_fts USING fts5("
-                "slug UNINDEXED, title, body, tags, code_blocks)"
+                "slug UNINDEXED, node_idx UNINDEXED, title, body, tags, code_blocks)"
             )
         self._conn.commit()
 
@@ -166,17 +222,23 @@ class FTS5Backend:
                 (slug, content_hash),
             )
             if self._use_fts5:
-                self._conn.execute(
-                    "INSERT INTO wiki_fts (slug, title, body, tags, code_blocks) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (
-                        slug,
-                        _tokenize_for_fts(title),
-                        _tokenize_for_fts(md_body),
-                        _tokenize_for_fts(str(tags)),
-                        _tokenize_for_fts(code),
-                    ),
-                )
+                # v0.6.0: node-level 索引——吸收 TreeSearch tree parser，
+                # 每个 `##` heading 段落一个 FTS5 row，多词同段出现 BM25 高分。
+                nodes = _split_md_nodes(title, md_body)
+                tok_title = _tokenize_for_fts(title)
+                tok_tags = _tokenize_for_fts(str(tags))
+                tok_code = _tokenize_for_fts(code)
+                for node_idx, node_text in nodes:
+                    self._conn.execute(
+                        "INSERT INTO wiki_fts "
+                        "(slug, node_idx, title, body, tags, code_blocks) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            slug, node_idx, tok_title,
+                            _tokenize_for_fts(node_text),
+                            tok_tags, tok_code,
+                        ),
+                    )
         self._conn.commit()
         self._indexed = True
 
@@ -260,19 +322,26 @@ class FTS5Backend:
             return []
 
         w = self._weights
-        # bm25(wiki_fts, w_slug=0, w_title, w_body, w_tags, w_code) — 列序对应建表
+        # v0.6.0: bm25 列序对应建表 (slug, node_idx, title, body, tags, code_blocks)
+        # slug/node_idx UNINDEXED 权重 0。按 slug 聚合取最高分 node（node-level）。
         sql = (
             f"SELECT f.slug, f.title, "
-            f"bm25(wiki_fts, 0, {w['title']}, {w['body']}, {w['tags']}, {w['code_blocks']}) AS rank "
+            f"bm25(wiki_fts, 0, 0, {w['title']}, {w['body']}, {w['tags']}, {w['code_blocks']}) AS rank "
             f"FROM wiki_fts f WHERE wiki_fts MATCH ? ORDER BY rank LIMIT ?"
         )
-        rows = self._conn.execute(sql, (match_expr, limit * 2)).fetchall()
-        # SQLite bm25 返回负值（越小越相关），取负转正
+        rows = self._conn.execute(sql, (match_expr, limit * 4)).fetchall()
+        # node-level：同 slug 可能多 row（每个 heading 段一 row），取最高分那个去重
+        best: dict[str, tuple[str, float]] = {}
+        order: list[str] = []
+        for slug, title, rank in rows:
+            score = float(-rank)
+            if slug not in best or score > best[slug][1]:
+                best[slug] = (title or slug, score)
+                if slug not in order:
+                    order.append(slug)
         hits = [
-            SearchHit(
-                slug=slug, title=title or slug, score=float(-rank), backend="fts5"
-            )
-            for slug, title, rank in rows
+            SearchHit(slug=slug, title=best[slug][0], score=best[slug][1], backend="fts5")
+            for slug in order
         ]
         # scope 硬过滤（FTS5 不存 area，需后过滤——若要 FTS5 内过滤，扩展 schema 加 area 列）
         if scope:

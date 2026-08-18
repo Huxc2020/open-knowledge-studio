@@ -39,7 +39,26 @@ Use the 6-factor recall engine to find relevant wiki pages and episodic memory, 
    If a page has `relates_to`/`relationship` fields, note the relationship
    (e.g., "this page enriches {slug}" or "this page challenges {slug}").
 5. **Answer** — Synthesize answer using recalled knowledge. Cite sources by slug.
-6. **Record access** — Mention which wiki pages were used
+6. **Record access** — Mention which wiki pages were used. Call `oks wiki use <slug>` for each page you actually cited (AI fills the access埋点 humans skip).
+7. **Archive good answers (v0.6.0, CV from karpathy-wiki)** — If the answer
+   (a) synthesized a non-obvious insight from ≥2 wiki pages and (b) the user
+   confirmed it was useful ("yes"/"good"/accepted it), write it to
+   `drafts/query-<topic>.md` as a wiki candidate:
+   ```markdown
+   ---
+   title: "<one-line answer>"
+   type: concept
+   area: <area>
+   importance: 0.6
+   status: draft
+   sources: [<cited slug 1>, <cited slug 2>]
+   ---
+   # <topic>
+   <archived answer body, keep citations as [slug]>
+   ```
+   Then `oks drafts promote <slug>` after human review. This compounds Q&A
+   into durable wiki — good answers become reusable knowledge, not lost.
+   Skip archiving for one-off factual lookups ("what does X mean").
 
 ## Recall Factors
 

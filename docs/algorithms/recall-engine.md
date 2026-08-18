@@ -56,8 +56,8 @@ total = base × type_boost
 Knowledge 路径的召回后端可插拔（`recall(search_backend=...)` 或 `OKS_SEARCH_BACKEND` env）：
 
 - **native**（默认）：下文 6+1 因子 + jieba + IDF + title boost，实时遍历，无新依赖
-- **fts5**（CV from TreeSearch FTS5Index）：SQLite FTS5 + BM25 + column weights（title 5x > tags 3x > body 1x > code 0.5x）+ 增量 diff（content_hash）+ 持久化索引（`.oks/fts5.db`）。大库（1000+ 页）比 native 遍历快。FTS5 不可用时降级 LIKE
-- **fusion**：native top-3 主排序 + fts5 独有补盲 2，实验验证最优（避免 RRF 噪声稀释 native R@1）
+- **fts5**（CV from TreeSearch FTS5Index，v0.6.0 升级 node-level）：SQLite FTS5 + BM25 + column weights（title 5x > tags 3x > body 1x > code 0.5x）+ 增量 diff（content_hash）+ 持久化索引（`.oks/fts5.db`）。v0.6.0 吸收 TreeSearch 的 markdown tree parser，每个 `##` heading 段一个 FTS5 row（node-level），多词同段 BM25 高分——50-case 实测 P@3=96%（v0.5.x flat page-level 仅 54%）。schema_version 检测自动 DROP 重建旧 schema。大库（1000+ 页）比 native 遍历快。FTS5 不可用时降级 LIKE
+- **fusion**（v0.6.0 重构）：fts5 node-level 主召回 + native 6+1 归一化 re-rank（0.7 fts5 + 0.3 native，保留 memory curve/goal boost）。limit<5 缩 native_top 给 fts5 留位。50-case P@3=90%（低于纯 fts5 96%，因 native re-rank 拖累——结论：oks 灵魂应在注入层 boost 不在召回层）
 - **connector**：第三方包经 `entry_points(group="oks_search_backend")` 注册（embedding / 代码 ast_parser / 其他开源 search 框架），OKS 核心不改
 
 架构决策：不假设数据少——FTS5 持久化索引是大数据标配；embedding / 代码搜索等能力以 connector 方式自由扩展替换，而非硬编码进核心。

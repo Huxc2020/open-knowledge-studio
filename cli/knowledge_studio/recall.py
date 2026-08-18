@@ -43,7 +43,15 @@ from knowledge_studio.store import (
 _logger = logging.getLogger(__name__)
 
 DEFAULT_RECALL_LIMIT = 5
-MAX_BODY_PREVIEW = 200
+MAX_BODY_PREVIEW = 200  # fallback; v0.6.0 实际用 inject_per_page_chars
+
+
+def _inject_per_page_chars() -> int:
+    """v0.6.0: 动态读 inject.per_page_chars（CV from karpathy-wiki token budget）。"""
+    try:
+        return int(load_recall_params().get("inject_per_page_chars", MAX_BODY_PREVIEW))
+    except Exception:
+        return MAX_BODY_PREVIEW
 RECALL_HIT_SCHEMA = "recall-hit/v1"
 RECALL_RESPONSE_SCHEMA = "recall-response/v1"
 
@@ -117,6 +125,9 @@ def load_recall_params(root=None):
         "posttool_floor": 0.9, "posttool_topn": 2, "posttool_mode": "signal",
         "posttool_recall": 1, "posttool_signal_rel_floor": 2.5,
         "conflict_window": 300, "search_backend": "native", "mail_topn": 3,
+        # v0.6.0: inject token budget (CV from karpathy-wiki L0-L3)
+        "inject_budget_chars": 4000, "inject_per_page_chars": 200,
+        "inject_title_only_floor": 0.5,
     }
 
     # 1. settings/recall.yaml (per-instance, git-synced)
@@ -142,6 +153,11 @@ def load_recall_params(root=None):
             params["conflict_window"] = int(cc.get("window", params["conflict_window"]))
             params["search_backend"] = str(data.get("search_backend", params["search_backend"]))
             params["mail_topn"] = int(data.get("mail_topn", params["mail_topn"]))
+            # v0.6.0: inject budget
+            ic = data.get("inject", {}) or {}
+            params["inject_budget_chars"] = int(ic.get("budget_chars", params["inject_budget_chars"]))
+            params["inject_per_page_chars"] = int(ic.get("per_page_chars", params["inject_per_page_chars"]))
+            params["inject_title_only_floor"] = float(ic.get("title_only_floor", params["inject_title_only_floor"]))
     except Exception:
         pass
 
@@ -244,7 +260,7 @@ def recall(
     project_slug: str | None = None,
     type_filter: str | None = None,
     knowledge_only: bool = False,
-    search_backend: str = "native",
+    search_backend: str | None = None,
 ) -> dict[str, Any]:
     """Two-path recall: episodic (raw/ + profiles/) + knowledge (wiki/).
 
@@ -259,6 +275,9 @@ def recall(
     existing callers including the auto-recall hook are unaffected.
     """
     goal_context = _resolve_goal_context(goal, goal_boost=goal_boost)
+    # v0.6.0: CLI 未显式传 search_backend 时读 settings/recall.yaml
+    if not search_backend:
+        search_backend = load_recall_params().get("search_backend", "native")
     return {
         "schema_version": RECALL_RESPONSE_SCHEMA,
         "query": query,
@@ -466,7 +485,7 @@ def _recall_knowledge_via_backend(
     goal_context: dict[str, Any],
     explain: bool,
     type_filter: str | None = None,
-    search_backend: str = "native",
+    search_backend: str | None = None,
 ) -> list[dict[str, Any]]:
     """Dispatch knowledge recall to native or a pluggable search backend.
 
@@ -475,7 +494,11 @@ def _recall_knowledge_via_backend(
     fusion → native top-3 + fts5 supplement-2 (experiment-validated optimal).
     other → connector entry_points(group="oks_search_backend").
     """
-    if search_backend == "native" or not search_backend:
+    # native (default) → OKS 6+1 factor recall (jieba + IDF + title boost +
+    # memory curve + goal boost). oks 原创召回，不走 get_backend。
+    # fts5 → SQLite FTS5 + BM25 (CV from TreeSearch, flat page-level).
+    # fusion → native top-3 + fts5 supplement-2 (default for best of both).
+    if not search_backend or search_backend in ("native", "legacy"):
         return _recall_knowledge_with_context(
             query=query,
             topic_id=topic_id,
@@ -496,6 +519,14 @@ def _recall_knowledge_via_backend(
         backend_kwargs["goal"] = requested
     hits = backend.search(query, limit=limit, scope=scope, **backend_kwargs)
 
+    # v0.6.0: goal boost 在注入层——fts5 召回 top-N 后，goal 命中的 slug
+    # 往前排（不改召回分数，只改注入顺序）。这是 oks 灵魂与召回精度分层
+    # 的实践：召回用 fts5（96% 精度），注入时 goal/review 等灵魂 boost。
+    if goal_context.get("mode") != "none":
+        goal_slugs = {g.get("slug") for g in goal_context.get("goals", [])}
+        if goal_slugs:
+            hits.sort(key=lambda h: (h.slug not in goal_slugs, -h.score))
+
     # 补全 recall-hit/v1 字段：backend 返回 SearchHit（slug/title/score），
     # 其余字段从 wiki 页详情查补，保证 /query skill 和 eval 不受影响。
     pages = {p.get("slug"): p for p in list_wiki_pages()}
@@ -515,13 +546,18 @@ def _recall_knowledge_via_backend(
             "score": round(float(p.get("score", 0) or 0), 3),
             "relevance": round(h.score, 3),
             "confidence": p.get("confidence", 0.8),
-            "body_preview": p.get("body", "")[:MAX_BODY_PREVIEW],
+            "body_preview": p.get("body", "")[:_inject_per_page_chars()],
             "tags": p.get("tags", ""),
             "has_traces": bool(p.get("traces")),
             "human_reviewed_at": p.get("human_reviewed_at", ""),
             "relates_to": p.get("relates_to", ""),
             "relationship": p.get("relationship", ""),
             "backend": h.backend,
+            "score_components": {
+                "fts5_score": round(h.score, 3),
+                "backend": h.backend,
+                **({"node": h.extra.get("best_node")} if h.extra.get("best_node") else {}),
+            },
         }
         if review.get("lesson"):
             entry["review_lesson"] = review["lesson"]

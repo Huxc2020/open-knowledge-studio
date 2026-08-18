@@ -1,37 +1,26 @@
-# OKS recall 参数（实例级，每人自调）
-#
-# settings/recall.yaml 是唯一参数真源（v0.5.12 起废弃环境变量）。
-# 改这里 → git commit → 走到哪同步到哪。OKS 只提供默认值，不强制。
-# 临时调参用 oks recall --floor 0.9（一次性，不改 yaml）。
-# oks metrics --html 会显示当前生效值。
-
-# ── 召回阈值 ──
 recall:
-  floor: 0.7          # rel 低于此值不注入（太高→漏召回，太低→噪声）
-  topn: 3              # 每次注入最多 N 条
-  minlen: 6            # query 短于此长度跳过（太短→无意义召回）
-  cooldown: 10         # 同 query N 轮内不重复注入
-
-# ── PostToolUse recall（工具后补提醒）──
+  floor: 0.7
+  topn: 3
+  minlen: 6
+  cooldown: 10
 posttool:
-  floor: 0.9           # 工具操作衍生 query 的 floor（比用户意图高，防噪声）
-  topn: 2              # PostToolUse 注入最多 N 条
-  mode: signal          # signal（默认，只 slug+rel）/ full（注入 body）
-  recall: 1             # 1=开 recall 补位 / 0=关（保留冲突检测）
-  signal_rel_floor: 2.5 # J 模式：rel 高于此才注入 signal（极高相关）
-
-# ── UserPromptSubmit（用户意图注入）──
+  floor: 0.9
+  topn: 2
+  mode: signal
+  recall: 1
+  signal_rel_floor: 2.5
 userprompt:
   floor: 0.7
   topn: 3
   cooldown: 10
-
-# ── 文件冲突检测 ──
 conflict:
-  window: 300          # 检测最近 N 秒内的 file-edits
-
-# ── search backend ──
-search_backend: native  # native | fts5 | fusion | <connector-name>
-
-# ── mail（多 Agent 通信）──
+  window: 300
+search_backend: fts5  # v0.6.0: 默认 fts5 node-level (吸收 TreeSearch, P@3=96%)
 mail_topn: 3
+
+# v0.6.0: Token Budget 分层注入（CV from karpathy-wiki L0-L3）
+# recall 注入按预算截断，避免长 wiki 淹没上下文
+inject:
+  budget_chars: 4000      # 总注入预算（字符），约 1K token
+  per_page_chars: 200     # 每页 body_preview 上限（L2 摘要级）
+  title_only_floor: 0.5  # rel < 此值的只给 L0 标题行（不进 body）

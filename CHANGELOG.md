@@ -1,3 +1,27 @@
+## [0.6.0] — 2026-08-18
+
+### 召回引擎重构（吸收 TreeSearch node-level）
+
+- **fts5 升级 node-level**：吸收 TreeSearch 的 markdown tree parser，每个 `##` heading 段一个 FTS5 row。50-case 实测 P@3 = 96%（flat page-level 54%）。
+- **关键 bug 修复**：CLI `--search-backend` Option 默认 `native` 覆盖了 yaml 配置——导致 fts5/fusion 从未生效。改默认 `None` + recall() 读 yaml。
+- **默认 search_backend 改 fts5**（96% 最优召回）。native (6+1) 保留作 oks 原创。
+- **fusion 重构**：fts5 主召回 + native 归一化 re-rank（0.7 fts5 + 0.3 native），limit<5 缩 native_top。
+- **goal boost 接到注入层**：召回用 fts5 精度，注入时 goal 命中往前排（oks 灵魂分层）。
+- **schema_version 检测**：旧 schema（5 列）自动 DROP 重建（6 列）。
+- 删 pytreesearch 外部依赖（吸收完成，不依赖外部包）。
+
+### 4 点优化（CV from karpathy-wiki）
+
+1. Token Budget 分层：recall.yaml `inject` 配置（budget_chars/per_page_chars/title_only_floor）。
+2. Backlink audit：lint 检查 `relates_to` 双向链接。
+3. Query 答案存档：/query skill 步骤 7 存优质答案到 drafts/ + promote。
+4. purpose.md anchor：recall goal boost（load_active_goals）已满足。
+
+### 验证
+
+- 192 tests passed
+- 50-case eval：native 54% / fts5 96% / fusion 90%
+
 # Changelog
 
 ## v0.5.14 (2026-08-17)

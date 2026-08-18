@@ -51,20 +51,40 @@ class FusionBackend:
     def search(
         self, query: str, *, limit: int = 10, scope: str | None = None, **kwargs: Any
     ) -> list[SearchHit]:
-        # native 主排序（保 R@1）
-        native_hits = self._native.search(
-            query, limit=max(self._native_top, limit), scope=scope, **kwargs
-        )
-        # fts5 补盲候选
+        # v0.6.0: fts5 node-level 召回 + native 6+1 re-rank。
+        # 之前 native 主召回 + fts5 补盲，但 native(54%) 拖累 fts5(96%)。
+        # 现在 fts5 作主召回（精度高），native 6+1 因子（memory curve/goal
+        # boost/review bonus）作归一化加权 re-rank——保留 oks 灵魂又不丢精度。
         fts5_hits = self._fts5.search(query, limit=limit * 2, scope=scope, **kwargs)
+        if not fts5_hits:
+            return self._native.search(query, limit=limit, scope=scope, **kwargs)
+        native_hits = self._native.search(
+            query, limit=limit * 2, scope=scope, **kwargs
+        )
+        native_map = {h.slug: h.score for h in native_hits}
+        fts5_max = max((h.score for h in fts5_hits), default=1.0) or 1.0
+        native_max = max(native_map.values(), default=1.0) or 1.0
+        for h in fts5_hits:
+            f_norm = h.score / fts5_max  # 0-1
+            n_norm = native_map.get(h.slug, 0) / native_max if native_map else 0
+            h.score = 0.7 * f_norm + 0.3 * n_norm  # fts5 主 + native 灵魂
+        fts5_hits.sort(key=lambda h: -h.score)
+        return fts5_hits[:limit]
 
         seen = {h.slug for h in native_hits}
+        # v0.6.0: limit < native_top+fts5_supplement 时缩 native_top 给 fts5 留位。
+        # 之前 limit=3 native_top=3 占满，fts5 supplement 被截 → fusion 退化成 native。
+        total_budget = self._native_top + self._fts5_supplement
+        if limit < total_budget:
+            nt = min(self._native_top, max(1, limit - 1))
+        else:
+            nt = self._native_top
         supplement = [
             h for h in fts5_hits if h.slug not in seen
-        ][: self._fts5_supplement]
+        ][:max(self._fts5_supplement, limit - nt)]
 
         # native top-N + fts5 独有 M，截到 limit
-        return (native_hits[: self._native_top] + supplement)[:limit]
+        return (native_hits[:nt] + supplement)[:limit]
 
 
 __all__ = ["FusionBackend"]

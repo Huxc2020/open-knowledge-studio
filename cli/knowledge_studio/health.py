@@ -31,6 +31,10 @@ def run_health_check() -> dict:
     total_pages = 0
     orphan_pages = 0
     dropped_pages = 0
+    # v0.6.0: backlink audit — 收集所有 page 的 relates_to，检查双向链接
+    # A.relates_to=B 时 B 应有反向引用（relates_to=A 或 body 含 [[A]]/[A](.) 链接）
+    relates_map: dict[str, list[tuple[str, str]]] = {}  # slug -> [(target, relationship)]
+    slug_set: set[str] = set()
     if wd.is_dir():
         for md in sorted(wd.rglob("*.md")):
             if md.name.lower() in {"index.md", "readme.md"}:
@@ -41,6 +45,35 @@ def run_health_check() -> dict:
                 orphan_pages += 1
             elif result == "dropped":
                 dropped_pages += 1
+            # 收集 relates_to 用于 backlink audit
+            try:
+                text = md.read_text(encoding="utf-8")
+                if text.startswith("---"):
+                    parts = text.split("---", 2)
+                    if len(parts) >= 3:
+                        meta = yaml.safe_load(parts[1].strip()) or {}
+                        slug = meta.get("slug") or md.stem
+                        slug_set.add(slug)
+                        rt = meta.get("relates_to")
+                        if rt:
+                            rel = meta.get("relationship", "see-also")
+                            for t in ([rt] if isinstance(rt, str) else rt):
+                                relates_map.setdefault(slug, []).append((t.strip(), rel))
+            except Exception:
+                pass
+
+    # backlink audit: A→B 时检查 B 是否反向引用 A
+    for src, targets in relates_map.items():
+        for target, rel in targets:
+            if target not in slug_set:
+                warnings.append(f"Backlink: {src} relates_to '{target}' but no such page exists")
+                continue
+            reverse = relates_map.get(target, [])
+            reverse_targets = {t for t, _ in reverse}
+            if src not in reverse_targets:
+                warnings.append(
+                    f"Backlink: {src} →{rel}→ {target} but {target} does not link back to {src}"
+                )
 
     dd = drafts_dir()
     total_drafts = 0

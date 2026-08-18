@@ -1,0 +1,108 @@
+cases:
+  # ── agent 类（10）──
+  - query: "怎么让 AI 跨会话记住用户偏好"
+    expect_slugs: ["ai-agent-记忆", "记忆与知识库"]
+  - query: "换更强模型分数没涨瓶颈在哪"
+    expect_slugs: ["agent-评估", "评估对象是模型"]
+  - query: "工具规模上百怎么让 agent 选对"
+    expect_slugs: ["agent-工具五类", "tool-design"]
+  - query: "agent 怎么避免重复犯昨天的错误"
+    expect_slugs: ["持续进化", "保存经历"]
+  - query: "语音助手怎么实现自然打断对话"
+    expect_slugs: ["多模态", "实时交互"]
+  - query: "预训练监督微调强化学习什么区别"
+    expect_slugs: ["模型后训练", "sft-记忆"]
+  - query: "为什么通用 agent 必须会写代码"
+    expect_slugs: ["代码是通用", "coding-agent"]
+  - query: "几个 agent 分工干活什么时候比单个强"
+    expect_slugs: ["多-agent-协作", "群体智能"]
+  - query: "给 AI 补充背景信息的系统性方法"
+    expect_slugs: ["上下文工程", "决定-agent-能力上限"]
+  - query: "agent 的本质组成是什么"
+    expect_slugs: ["agent-llm-上下文-工具", "llm-上下文"]
+  # ── oss 贡献类（10）──
+  - query: "开源贡献怎么挑容易 merge 的仓库"
+    expect_slugs: ["repo-selection", "repo"]
+  - query: "抢不到 PR 还能怎么参与"
+    expect_slugs: ["pr-competition", "review-participation"]
+  - query: "什么时机提交 PR 容易被 merge"
+    expect_slugs: ["timing-strategy", "timing"]
+  - query: "热门仓库小 diff 还有机会吗"
+    expect_slugs: ["triage-diff", "小-diff"]
+  - query: "PR 审核要查哪些项"
+    expect_slugs: ["pr-review-protocol", "pr-review"]
+  - query: "多个项目怎么分散精力风险"
+    expect_slugs: ["risk-spreading", "risk"]
+  - query: "怎么保持线性提交历史"
+    expect_slugs: ["git-rebase", "rebase"]
+  - query: "不开 phase 门控直跑会怎样"
+    expect_slugs: ["phase", "门控"]
+  - query: "CI 红了第一步做什么"
+    expect_slugs: ["ci-triage", "ci"]
+  - query: "把刷 PR 的流程拆成可复用调用链"
+    expect_slugs: ["oss-contribution-call-chain", "call-chain"]
+  # ── 工程实践类（10）──
+  - query: "跑完整测试前先验证什么"
+    expect_slugs: ["smoke-first", "smoke"]
+  - query: "改代码前先问什么问题"
+    expect_slugs: ["design-check", "design"]
+  - query: "读 test 文件理解设计意图"
+    expect_slugs: ["semantic-intent", "semantic"]
+  - query: "错误处理规范怎么写边界"
+    expect_slugs: ["error-handling", "错误处理"]
+  - query: "测试知识库化是什么思路"
+    expect_slugs: ["untitled", "测试知识"]
+  - query: "并发模式有哪些锁和限流"
+    expect_slugs: ["concurrency-patterns", "并发"]
+  - query: "数据库 schema 和 migration 怎么设计"
+    expect_slugs: ["database-design", "数据库"]
+  - query: "REST API 怎么设计幂等和版本"
+    expect_slugs: ["api-design", "api"]
+  - query: "日志怎么结构化分 level"
+    expect_slugs: ["logging-standards", "日志"]
+  - query: "组件拆分用容器还是展示"
+    expect_slugs: ["component-architecture", "组件"]
+  # ── 学术类（5）──
+  - query: "论文引用用 BibTeX 还是 DOI"
+    expect_slugs: ["citation-system", "citation"]
+  - query: "科研图表遵循什么原则"
+    expect_slugs: ["figure-design", "图表"]
+  - query: "论文 IMRaD 结构是什么"
+    expect_slugs: ["paper-structure", "imrad"]
+  - query: "写同行评议 review 的礼仪"
+    expect_slugs: ["peer-review-etiquette", "评议"]
+  - query: "实验怎么保证可复现"
+    expect_slugs: ["reproducibility-checklist", "可复现"]
+  # ── 前端类（5）──
+  - query: "React 开发最佳实践"
+    expect_slugs: ["react-best-practices", "react"]
+  - query: "状态放 local 还是 global"
+    expect_slugs: ["state-management", "状态管理"]
+  - query: "前端性能优化做哪些"
+    expect_slugs: ["performance-optimization", "性能优化"]
+  - query: "可访问性要达到什么等级"
+    expect_slugs: ["accessibility-rules", "可访问性"]
+  - query: "find 组件优先查哪一层"
+    expect_slugs: ["local-platform-css", "local-覆盖-platform"]
+  # ── 方法论类（5）──
+  - query: "Anthropic 的循环工程方法论"
+    expect_slugs: ["loop-engineering", "loop"]
+  - query: "自进化知识平台是什么策略"
+    expect_slugs: ["ai-native-strategy", "ai-native"]
+  - query: "任务做完怎么自动沉淀经验"
+    expect_slugs: ["auto-knowledge-distillation", "知识蒸馏"]
+  - query: "讨论执行学习的三阶段闭环"
+    expect_slugs: ["discuss-goal-learning-loop", "讨论-执行-学习"]
+  - query: "阶段型目标用时间线追踪"
+    expect_slugs: ["timeline-view", "时间线"]
+  # ── conventions 类（5）──
+  - query: "worker 验证让另一个 worker 做"
+    expect_slugs: ["worker-peer-review", "worker"]
+  - query: "PR 大小和 merge 速度的关系"
+    expect_slugs: ["pr-merge-patterns", "merge-pattern"]
+  - query: "专门化 agent 提升复杂任务"
+    expect_slugs: ["specialized-agent-toolsets", "专门化"]
+  - query: "trace 调用链怎么记录"
+    expect_slugs: ["trace-call-chain", "trace"]
+  - query: "shared constants 怎么共享常量"
+    expect_slugs: ["shared-constants", "constants"]

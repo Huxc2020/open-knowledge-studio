@@ -88,3 +88,4 @@ drafts/*.md
 .claude/settings.json
 .claude/hooks/
 .qoder/settings.json
+.oks-treesearch-cache/
