@@ -17,7 +17,7 @@ EXPECTED_BUCKETS = [
 ]
 EXPECTED_TOP_LEVEL = {
     ".claude", ".codex", ".agents", "_meta", "settings", "templates",
-    "profiles", "raw", "wiki", "drafts", "mail", ".gitignore",
+    "profiles", "raw", "wiki", "drafts", "mail", ".gitignore", "AGENTS.md",
 }
 
 

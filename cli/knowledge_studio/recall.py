@@ -63,6 +63,73 @@ _EPISODIC_SOURCE_LABELS = {
 }
 
 
+def load_recall_params(root=None):
+    """Load recall params: env > settings/recall.yaml > code defaults.
+
+    Per-instance tunable params. Users edit settings/recall.yaml, commit it,
+    and the params travel with their knowledge base. OKS only ships defaults.
+    """
+    import os
+    from pathlib import Path
+
+    params = {
+        "recall_floor": 0.7, "recall_topn": 3, "recall_minlen": 6,
+        "recall_cooldown": 10,
+        "posttool_floor": 0.9, "posttool_topn": 2, "posttool_mode": "signal",
+        "posttool_recall": 1, "posttool_signal_rel_floor": 2.5,
+        "conflict_window": 300, "search_backend": "native", "mail_topn": 3,
+    }
+
+    # 1. settings/recall.yaml (per-instance, git-synced)
+    try:
+        import yaml
+        from knowledge_studio.store import repo_root
+        kb_root = root if root is not None else repo_root()
+        ypath = Path(kb_root) / "settings" / "recall.yaml"
+        if ypath.is_file():
+            data = yaml.safe_load(ypath.read_text(encoding="utf-8")) or {}
+            rc = data.get("recall", {}) or {}
+            pc = data.get("posttool", {}) or {}
+            cc = data.get("conflict", {}) or {}
+            params["recall_floor"] = float(rc.get("floor", params["recall_floor"]))
+            params["recall_topn"] = int(rc.get("topn", params["recall_topn"]))
+            params["recall_minlen"] = int(rc.get("minlen", params["recall_minlen"]))
+            params["recall_cooldown"] = int(rc.get("cooldown", params["recall_cooldown"]))
+            params["posttool_floor"] = float(pc.get("floor", params["posttool_floor"]))
+            params["posttool_topn"] = int(pc.get("topn", params["posttool_topn"]))
+            params["posttool_mode"] = str(pc.get("mode", params["posttool_mode"]))
+            params["posttool_recall"] = int(pc.get("recall", params["posttool_recall"]))
+            params["posttool_signal_rel_floor"] = float(pc.get("signal_rel_floor", params["posttool_signal_rel_floor"]))
+            params["conflict_window"] = int(cc.get("window", params["conflict_window"]))
+            params["search_backend"] = str(data.get("search_backend", params["search_backend"]))
+            params["mail_topn"] = int(data.get("mail_topn", params["mail_topn"]))
+    except Exception:
+        pass
+
+    # env 已废弃——settings/recall.yaml 是唯一真源（git 同步，走到哪带到哪）。
+    # 临时调参用 CLI flag（oks recall --floor 0.9），不污染持久状态。
+    # 迁移：检测到旧 OKS_ env 时警告，提示迁移到 yaml + unset。
+    _legacy_env = [
+        "OKS_RECALL_FLOOR", "OKS_RECALL_TOPN", "OKS_RECALL_MINLEN",
+        "OKS_RECALL_COOLDOWN", "OKS_POSTTOOL_FLOOR", "OKS_POSTTOOL_TOPN",
+        "OKS_POSTTOOL_MODE", "OKS_POSTTOOL_RECALL", "OKS_POSTTOOL_SIGNAL_REL_FLOOR",
+        "OKS_CONFLICT_WINDOW", "OKS_SEARCH_BACKEND", "OKS_MAIL_TOPN",
+    ]
+    import os as _os
+    _found = [k for k in _legacy_env if _os.environ.get(k)]
+    if _found and not getattr(load_recall_params, "_warned", False):
+        load_recall_params._warned = True
+        import sys
+        print(
+            "⚠ OKS: 检测到旧环境变量 " + ", ".join(_found) + "，已废弃。\n"
+            "  settings/recall.yaml 是唯一参数真源（git 同步）。\n"
+            "  请把值迁移到 settings/recall.yaml，然后 unset 这些 env。\n"
+            "  临时调参用 CLI flag: oks recall --floor 0.9",
+            file=sys.stderr,
+        )
+    return params
+
+
 def _resolve_goal_context(
     goal: str | None = None,
     *,

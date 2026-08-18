@@ -272,3 +272,56 @@ scoped+goal 场景持平（R@1 0.600, MRR 0.689）——scope 硬过滤 + goal b
 | fusion | 0.600 | **0.800** | 0.672 | 172.2 |
 
 fusion 比 native 慢 ~2x（172 vs 85ms）但 R@5 +0.067——质量 vs 速度 trade-off，用户按需选 backend。
+
+## 十二、PostToolUse 注入模式对比（K+J 混合）
+
+PostToolUse recall 从强制注入（A）→ 智能选择（J）→ system prompt 引导（K）进化。目标：**AI 始终知晓 OKS，token 最省，沉默期不盲区**。
+
+![fig6](../assets/experiments/fig6-posttool-modes.png)
+
+### 四模式对比（20 工具长任务）
+
+| 模式 | 机制 | token | signal 次数 | AI 知晓 | 沉默期 |
+|------|------|-------|-------------|---------|--------|
+| A full | 强制注入 body | ~20KB | 20（每次） | ✅ 被动 | ✅ |
+| D signal | 每次 signal ~422B | ~8KB | 20（每次） | ✅ signal | ✅ |
+| **J 智能** | 只 Edit+高 rel signal | **~1KB** | **3** | ✅ signal | ✅ |
+| **K+J 混合** | prompt 引导 + Edit signal | **~1KB** | **3** | ✅ prompt | ✅ |
+| C 删 | 不注入 | 0 | 0 | ❌ | ❌ 靠 AI |
+
+### J 模式闸门（`_should_signal`）
+
+3 条件 AND 才注入 signal：
+
+1. **工具类型**：只 Edit/Write/MultiEdit/Grep/Glob（Bash/Read 跳过——AI 已在读内容，signal 纯噪声）
+2. **query 质量**：非通用词（git/status/ls/echo/cat 等），≥4 字符
+3. **rel > 2.5**（极高相关）
+
+### 实测数据（xinhai 实例，68 条 inject）
+
+- Bash `oks status` → 不 signal ✅（Bash 跳过）
+- Read ai-agent wiki → 不 signal ✅（Read 跳过）
+- Edit `recall.py` → signal ✅（Edit + rel 3.324 > 2.5）
+- Edit `test_init.py` → signal ✅（Edit + rel 2.685 > 2.5）
+
+### K（system prompt 引导）
+
+`oks init` 生成实例根 `AGENTS.md`，内含 OKS recall 引导：
+
+```markdown
+## OKS recall：system prompt 引导 + 智能信号（K+J 混合）
+
+你有 OKS 知识库。任务涉及不确定的概念 / 模式 / 历史决策 / 竞品对照时，调：
+  oks recall "<任务意图 query>" --explain --limit 3
+query 用任务意图，不是工具操作。不调也行。零 token 浪费。
+```
+
+AI 读到 system prompt 即知晓有 OKS + 何时调 + query 来自任务意图——零 hook 注入。
+
+### 结论
+
+K+J 混合最优：
+- token 省 95%（vs A 的 20KB → K+J 的 1KB）
+- AI 始终知晓 OKS（K prompt，不靠 signal）
+- 沉默期不盲区（J 只在高相关 Edit 补提醒，3 次/20 工具）
+- 参数可调：每人通过 `settings/recall.yaml` 自调 floor/topn/mode（OKS 提供默认值，每人不同）

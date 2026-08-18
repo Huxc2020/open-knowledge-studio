@@ -239,10 +239,15 @@ def _query_from_tool(tool_name: str, tool_input: dict) -> str:
                 return stem
     cmd = str(tool_input.get("command", "") or "")
     if cmd:
+        # Filter path tokens (~/, /) + stopwords to get meaningful query.
         words = [
             w for w in re.split(r"\s+", cmd)
             if w and not w.startswith("-")
-            and w not in ("&&", "||", "|", "sudo", "cd", ";", "python", "python3")
+            and not w.startswith("~")
+            and "/" not in w
+            and w not in ("&&", "||", "|", "sudo", "cd", ";", "python", "python3",
+                         "bash", "sh", "echo", "cat", "ls", "grep", "head",
+                         "tail", "wc", "find", "sed", "awk", "export")
         ]
         return " ".join(words[:6])
     pat = str(tool_input.get("pattern", "") or tool_input.get("query", "") or "")
@@ -251,8 +256,40 @@ def _query_from_tool(tool_name: str, tool_input: dict) -> str:
     return ""
 
 
+def _should_signal(tool_name: str, query: str, hits: list) -> bool:
+    """Smart selectivity: not every tool call deserves a signal.
+
+    Only signal when ALL hold:
+    1. Tool type is knowledge-relevant (Edit/Write/Grep/Glob, not Bash/Read)
+    2. Query is domain-specific (not generic words like git/status/ls)
+    3. Top hit has very high relevance (> 2.5)
+
+    Rationale: PostToolUse fires after every tool. Bash ops (git/ls/cd) and
+    Read (AI already reading) don't need signals — they generate 85% noise.
+    Only Edit/Write code + Grep/Glob search + high-rel + domain query signal.
+    """
+    # 1. Tool type: only Edit/Write/MultiEdit/Grep/Glob
+    signal_tools = {"Edit", "Write", "MultiEdit", "edit", "write", "multiedit",
+                   "Grep", "Glob", "grep", "glob"}
+    if tool_name not in signal_tools:
+        return False
+    # 2. Query quality: generic words don't signal
+    generic = {"git", "status", "ls", "cd", "rm", "mkdir", "cat", "echo", "pwd",
+              "find", "sed", "awk", "export", "pip", "npm", "node", "python",
+              "bash", "sh", "test", "run", "build", "make", "tail", "head", "wc"}
+    ql = (query or "").lower().strip()
+    words = ql.split()
+    if len(ql) < 4 or (words and words[0] in generic):
+        return False
+    # 3. Relevance: top1 rel > 2.5 (very high, not token-overlap noise)
+    if not hits or float(hits[0].get("relevance", 0)) < 2.5:
+        return False
+    return True
+
+
 def _recall_supplement(
-    kb_root: Path, session_id: str, query: str, agent_id: str
+    kb_root: Path, session_id: str, query: str, agent_id: str,
+    tool_name: str = "",
 ) -> str:
     """PostToolUse recall — inject relevant memory after tool calls.
 
@@ -267,10 +304,12 @@ def _recall_supplement(
     except Exception:
         return ""
 
-    floor = float(os.environ.get("OKS_POSTTOOL_FLOOR", "0.9"))
-    topn = int(os.environ.get("OKS_POSTTOOL_TOPN", "2"))
-    cooldown = int(os.environ.get("OKS_RECALL_COOLDOWN", "10"))
-    search_backend = os.environ.get("OKS_SEARCH_BACKEND", "native")
+    from knowledge_studio.recall import load_recall_params
+    p = load_recall_params(kb_root)
+    floor = p["posttool_floor"]
+    topn = p["posttool_topn"]
+    cooldown = p["recall_cooldown"]
+    search_backend = p["search_backend"]
 
     state_path = _state_path(session_id, kb_root)
     state = _load_state(state_path)
@@ -284,6 +323,12 @@ def _recall_supplement(
         ).get("knowledge", [])
     except Exception:
         hits = []
+
+    # Smart selectivity: not every tool call deserves a signal.
+    # Skip Bash/Read ops + generic queries + low-rel — they're 85% noise.
+    if not _should_signal(tool_name, query, hits):
+        _save_state(state_path, state)  # still advance turn counter
+        return ""
 
     picked = []
     for h in hits:
@@ -309,16 +354,32 @@ def _recall_supplement(
 
     _append_inject_trace(kb_root, agent_id, session_id, query, picked, source="posttool")
 
-    out = ['<recalled-memory source="oks-posttool">']
-    out.append(f'<!-- query="{query}" floor={floor} (PostToolUse supplement, long-task blind-spot fill) -->')
-    for h in picked:
-        body = str(h.get("body_preview", ""))[:280]
-        out.append(
-            f"- [{h.get('type', '')}] {h.get('title', '')} "
-            f"(slug: {h.get('slug', '')}, rel: {h.get('relevance', 0)})"
-        )
-        out.append(f"  {body}")
-    out.append("</recalled-memory>")
+    # 提示模式（exposure-based）：只告知“有记忆可用”，不注入内容。
+    # AI 看到信号后自主决定是否调 oks recall 取详情——token 省 90%，
+    # 沉默期仍有信号（避免长任务盲区），AI 不被强制注入无关内容。
+    # OKS_POSTTOOL_MODE=full 恢复旧行为（注入完整 body）。
+    mode = os.environ.get("OKS_POSTTOOL_MODE", "signal")
+    if mode == "full":
+        out = ['<recalled-memory source="oks-posttool">']
+        out.append(f'<!-- query="{query}" floor={floor} (PostToolUse supplement) -->')
+        for h in picked:
+            body = str(h.get("body_preview", ""))[:280]
+            out.append(
+                f"- [{h.get('type', '')}] {h.get('title', '')} "
+                f"(slug: {h.get('slug', '')}, rel: {h.get('relevance', 0)})"
+            )
+            out.append(f"  {body}")
+        out.append("</recalled-memory>")
+    else:  # signal mode（默认）——只 slug + rel + 引导，不注入 body
+        out = ['<oks-memory-signal source="oks-posttool">']
+        out.append(f'<!-- query="{query}" floor={floor} (signal: slugs only, no body) -->')
+        for h in picked:
+            out.append(
+                f"- [{h.get('type', '')}] {h.get('title', '')} "
+                f"(slug: {h.get('slug', '')}, rel: {h.get('relevance', 0)})"
+            )
+        out.append(f'  需要详情: oks recall "{query}" --explain')
+        out.append("</oks-memory-signal>")
     return "\n".join(out)
 
 
@@ -351,11 +412,14 @@ def main() -> int:
                 )
 
     # 2. Recall supplement (any tool — long-task blind spot)
-    query = _query_from_tool(tool_name, tool_input)
-    if query:
-        block = _recall_supplement(kb_root, session_id, query, agent_id)
-        if block:
-            output_parts.append(block)
+    # Set OKS_POSTTOOL_RECALL=0 to disable (keep conflict detection only).
+    recall_on = os.environ.get("OKS_POSTTOOL_RECALL", "1") != "0"
+    if recall_on:
+        query = _query_from_tool(tool_name, tool_input)
+        if query:
+            block = _recall_supplement(kb_root, session_id, query, agent_id, tool_name)
+            if block:
+                output_parts.append(block)
 
     if output_parts:
         sys.stdout.write("\n".join(output_parts) + "\n")

@@ -559,13 +559,16 @@ def recall_cmd(
     project: Optional[str] = typer.Option(None, "--project", envvar="OKS_PROJECT", help="Current project slug; required to recall profiles/projects/<slug> (A2 scope)"),
     type_filter: Optional[str] = typer.Option(None, "--type", "-t", help="Restrict the knowledge path to one wiki type"),
     knowledge_only: bool = typer.Option(False, "--knowledge-only", help="Skip the episodic path — only wiki/ results, no raw/ source material"),
-    search_backend: str = typer.Option("native", "--search-backend", envvar="OKS_SEARCH_BACKEND", help="Search backend: native | fts5 | fusion | <connector-name> (connector via entry_points group=oks_search_backend)"),
+    search_backend: str = typer.Option("native", "--search-backend", help="Search backend: native | fts5 | fusion | <connector-name> (connector via entry_points group=oks_search_backend)"),
+    floor_override: Optional[float] = typer.Option(None, "--floor", help="临时调 floor（不改 settings/recall.yaml，一次性）"),
 ):
     """Two-path recall: episodic (raw/) + knowledge (wiki/).
 
     `--knowledge-only` drops the episodic path for a wiki-only view; `--type`
     narrows the knowledge path to one wiki type before ranking and `--limit`.
     """
+    from knowledge_studio.recall import load_recall_params
+    load_recall_params()  # 触发 env 迁移警告（env 已废弃）
     output_format = _validate_output_format(output_format)
     try:
         result = recall(
@@ -584,6 +587,16 @@ def recall_cmd(
     except ValueError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(2)
+
+    if floor_override is not None:
+        result["episodic"] = [
+            h for h in result.get("episodic", [])
+            if float(h.get("relevance", h.get("rel", 0))) >= floor_override
+        ]
+        result["knowledge"] = [
+            h for h in result.get("knowledge", [])
+            if float(h.get("relevance", h.get("rel", 0))) >= floor_override
+        ]
 
     if output_format == "json":
         _emit_json(result)
@@ -1353,6 +1366,14 @@ def _generate_metrics_html(root: Path) -> str:
     rej_med = statistics.median(rejected_rels) if rejected_rels else 0
     import os as _os
     cur_floor = _os.environ.get("OKS_RECALL_FLOOR", "0.7")
+    # PostToolUse 注入统计（source=posttool）
+    posttool_injects = [r for r in injects if r.get("source") == "posttool"]
+    pt_total = len(posttool_injects)
+    pt_accepted = sum(1 for r in posttool_injects if r.get("used"))
+    pt_rate = (pt_accepted / pt_total * 100) if pt_total else 0
+    # 当前生效参数（从 settings/recall.yaml + env）
+    from knowledge_studio.recall import load_recall_params
+    params = load_recall_params(root)
     suggested_floor = max(0.7, acc_med - 0.2) if accepted_rels else 0.7
     slug_freq = Counter()
     for rec in injects:
@@ -1401,6 +1422,18 @@ th {{ background: #f4f4f8; }}
 <tr><td>OKS_RECALL_FLOOR</td><td>{cur_floor}</td><td>{suggested_floor:.2f}</td></tr>
 </table>
 <p>频繁注入（cooldown 可能太短）：{freq_str}</p>
+<h2>PostToolUse 注入统计</h2>
+<p>PostToolUse 注入 <b>{pt_total}</b> 次，<b>{pt_accepted}</b> 条被采纳（<b>{pt_rate:.0f}%</b>）</p>
+<h2>当前参数（settings/recall.yaml + env）</h2>
+<table><tr><th>参数</th><th>当前值</th></tr>
+<tr><td>recall.floor</td><td>{params["recall_floor"]}</td></tr>
+<tr><td>recall.topn</td><td>{params["recall_topn"]}</td></tr>
+<tr><td>posttool.floor</td><td>{params["posttool_floor"]}</td></tr>
+<tr><td>posttool.mode</td><td>{params["posttool_mode"]}</td></tr>
+<tr><td>posttool.signal_rel_floor</td><td>{params["posttool_signal_rel_floor"]}</td></tr>
+<tr><td>search_backend</td><td>{params["search_backend"]}</td></tr>
+</table>
+<p class="muted">settings/recall.yaml 是唯一参数真源 → git commit → 走到哪同步到哪。临时调参用 oks recall --floor 0.9。</p>
 <h2>知识指标</h2>
 <table><tr><th>维度</th><th>指标</th><th>值</th></tr>{"".join(k_rows)}</table>
 </body>
@@ -1604,6 +1637,42 @@ raw/executions/*/.append.lock
 """
 
 
+_INSTANCE_AGENTS_MD = """\
+# {name}
+
+OKS 知识库实例（open-knowledge-studio）。
+
+## OKS recall：system prompt 引导 + 智能信号（K+J 混合）
+
+你有 OKS 知识库。任务涉及不确定的概念 / 模式 / 历史决策 / 竞品对照时，调：
+  ```bash
+  oks recall "<任务意图 query>" --explain --limit 3
+  ```
+query 用任务意图（如"OKS 记忆体系 对比 ai-book"），不是工具操作。
+不调也行——任务简单 / 已读够时不调。零 token 浪费。
+
+### J：智能信号（PostToolUse 补提醒）
+
+Edit/Write 代码文件后，检测到高相关（rel > 2.5）时，会看到轻量提示：
+  <oks-memory-signal>...</oks-memory-signal>
+只 slug + rel（不注入 body）。你判断需要才调 oks recall。
+Bash/Read 不触发信号。
+
+### UserPromptSubmit（用户意图注入）
+
+用户说话时自动注入相关记忆——真 recall 时机。
+
+## 常用命令
+
+```bash
+oks recall "<query>"           # 召回相关 wiki
+oks recall "<query>" --explain # 显示评分因子
+oks status                     # 知识库状态
+oks wiki use <slug>            # 标记引用
+```
+"""
+
+
 _SHARED_ASSETS = ("templates", "_meta", "settings", "profiles")
 
 # How each agent ecosystem's directory is assembled from the single-source
@@ -1747,6 +1816,14 @@ def init(
             console.print(f"[green]Materialized assets:[/green] {', '.join(copied)}")
         else:
             console.print("[dim]Assets already present (use --upgrade to refresh).[/dim]")
+
+    agents_md = root / "AGENTS.md"
+    if not agents_md.exists():
+        agents_md.write_text(
+            _INSTANCE_AGENTS_MD.format(name=root.name),
+            encoding="utf-8",
+        )
+        console.print(f"[green]Wrote[/green] {agents_md}")
 
     gitignore = root / ".gitignore"
     if gitignore.exists():

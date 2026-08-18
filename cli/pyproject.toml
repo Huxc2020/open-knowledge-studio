@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "open-knowledge-studio"
-version = "0.5.9"
+version = "0.5.13"
 description = "File-based knowledge engineering CLI for Claude Code"
 readme = "README.md"
 license = {text = "MIT"}
@@ -31,7 +31,7 @@ dependencies = [
     "gitpython>=3",
     "pyyaml>=6",
     "jsonschema>=4.20",
-    "oks-connector>=0.2.0",
+    "oks-connector>=0.3.0",
 ]
 
 [project.optional-dependencies]

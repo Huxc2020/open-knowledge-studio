@@ -1,5 +1,82 @@
 # Changelog
 
+## v0.5.12 (2026-08-17)
+
+### env 废弃 — settings/recall.yaml 是唯一参数真源
+
+回应「参数不能永远跟随仓库配置文件吗？环境变量忘了怎么办？两边不同步怎么办？」
+
+- **env 完全废弃**：`load_recall_params()` 去掉 env 读取，只读 yaml + 默认。
+  参数永远跟随 `settings/recall.yaml`，git 同步，走到哪带到哪。
+- **迁移警告**：检测到旧 `OKS_*` env 时警告提示迁移到 yaml + unset
+  （`load_recall_params._warned` 防刷屏）
+- **CLI flag 临时调参**：`oks recall --floor 0.9` 一次性调 floor，不改 yaml。
+  recall_cmd 用 `floor_override` 过滤 rel 低于 floor 的结果。
+- **metrics html 文案**：去掉「env 覆盖 yaml」，改为「settings/recall.yaml 是唯一
+  参数真源 → git commit → 走到哪同步到哪。临时调参用 oks recall --floor」
+- **去掉 `envvar=OKS_SEARCH_BACKEND`**：search_backend 也从 yaml 读，不读 env
+
+### 新优先级
+
+```
+CLI flag（一次性临时调参）> settings/recall.yaml（唯一持久真源）> 代码默认值
+env 已废弃——不再读取
+```
+
+### 向后兼容
+
+现有 env 用户升级后 env 不再生效。`oks init . --upgrade` 生成默认 yaml，
+用户把 env 值搬到 yaml（或看警告手动迁移），unset env 即可。
+
+## v0.5.11 (2026-08-17)
+
+### 实验数据图表化 + 参数存知识库
+
+将 PostToolUse 注入实验数据沉淀到文档与报告，参数可随知识库同步：
+
+- **fig6 四模式对比图**（`docs/assets/experiments/fig6-posttool-modes.png`）：
+  A(20KB) / D(8KB) / J(1KB) / K+J(1KB) token + signal 次数对比
+- **docs/algorithms/oks-effectiveness.md 第十二节**：PostToolUse 注入模式对比，
+  含四模式表 + J 闸门 3 条件 + 实测数据 + K 引导说明
+- **`settings/recall.yaml` 参数文件**：`oks init` 生成实例级参数文件，
+  改 → git commit → 走到哪同步到哪。OKS 只提供默认值，每人自调。
+  优先级：env > settings/recall.yaml > 代码默认值
+- **`load_recall_params()` 共享加载函数**（recall.py）：env / yaml / 默认 三级 fallback
+- **post-tool-edit.py 用 load_recall_params**：取代直接 os.environ，读 yaml
+- **`oks metrics --html` 增强**：加 PostToolUse 注入统计 + 当前参数表
+  （recall.floor / posttool.mode / signal_rel_floor / search_backend）
+
+### 数据同步路径
+
+```
+settings/recall.yaml (参数) + records/inject.jsonl (注入数据)
+  → git commit → clone 即同步
+  → oks metrics --html 随时看报告
+  → 参数 + 数据不断积累沉淀，每人不同
+```
+
+## v0.5.10 (2026-08-17)
+
+### K+J 混合：system prompt 引导 + 智能信号
+
+PostToolUse recall 从 D 模式（每次工具 signal ~8KB）进化为 K+J 混合：
+
+- **K（system prompt 引导）**：`oks init` 生成实例根 `AGENTS.md`，内含 OKS
+  recall 引导——AI 读到即知晓有知识库 + 何时调 + query 来自任务意图。
+  零 hook 注入，token 最省。
+- **J（智能信号）**：`post-tool-edit.py` 加 `_should_signal()` 闸门，3 条件
+  AND 才注入 signal：
+  1. 工具类型：只 Edit/Write/MultiEdit/Grep/Glob（Bash/Read 跳过）
+  2. query 质量：非通用词（git/status/ls 等），≥4 字符
+  3. rel > 2.5（极高相关）
+- 实测：20 工具长任务只 2-3 次 signal ≈ 1KB（vs A=20KB，省 95%）
+- Bash/Read 全跳过——AI 已在读内容，signal 纯噪声
+
+### 新增
+
+- `_INSTANCE_AGENTS_MD` 模板常量 + `init` 写实例根 `AGENTS.md`
+- `_should_signal()` 闸门 + `_query_from_tool` 路径过滤增强
+
 ## v0.5.9 (2026-08-17)
 
 ### 可插拔 search backend 架构
