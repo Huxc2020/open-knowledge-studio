@@ -281,8 +281,16 @@ def _should_signal(tool_name: str, query: str, hits: list) -> bool:
     words = ql.split()
     if len(ql) < 4 or (words and words[0] in generic):
         return False
-    # 3. Relevance: top1 rel > 2.5 (very high, not token-overlap noise)
-    if not hits or float(hits[0].get("relevance", 0)) < 2.5:
+    # 3. Relevance: top1 rel > signal_rel_floor (very high, not token-overlap noise)
+    # Read from settings/recall.yaml (posttool.signal_rel_floor) so the
+    # config is actually live — oks metrics shows it, dsh-oks settings card
+    # tunes it, and this hook honors it. Falls back to 2.5 if load fails.
+    try:
+        from knowledge_studio.recall import load_recall_params
+        rel_floor = float(load_recall_params(kb_root).get("posttool_signal_rel_floor", 2.5))
+    except Exception:
+        rel_floor = 2.5
+    if not hits or float(hits[0].get("relevance", 0)) < rel_floor:
         return False
     return True
 

@@ -53,6 +53,45 @@ RECALL_RESPONSE_SCHEMA = "recall-response/v1"
 # digests (see distiller.write_digest).
 _NON_RECALLABLE_RAW_SUBDIRS = ("executions", ".logs")
 
+
+def set_recall_yaml_param(kb_root: Path, location: tuple[str | None, str], value: str) -> None:
+    """Write a single recall param into settings/recall.yaml (atomic).
+
+    `location` is (section, field) where section may be None for top-level
+    keys (search_backend, mail_topn). Coerces value to int/float/bool/str
+    like load_recall_params does. Used by `oks config set` so recall params
+    land in the single source of truth, not ~/.oks/config.json."""
+    import tempfile, os
+    import yaml as _yaml
+    section, field = location
+    ypath = kb_root / "settings" / "recall.yaml"
+    data: dict = {}
+    if ypath.is_file():
+        data = _yaml.safe_load(ypath.read_text(encoding="utf-8")) or {}
+    # coerce value type
+    if value.lower() in ("true", "false"):
+        v: int | float | bool | str = value.lower() == "true"
+    elif value.lower() in ("true", "false"):
+        v: int | float | bool | str = value.lower() == "true"
+    else:
+        try:
+            v = float(value) if "." in value else int(value)
+        except ValueError:
+            v = value
+    if section is None:
+        data[field] = v
+    else:
+        data.setdefault(section, {})[field] = v
+    ypath.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(ypath.parent), suffix=".yaml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            _yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
+        os.replace(tmp, ypath)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
 # A2 requires every injected item to carry a source label. Episodic hits used to
 # arrive unlabelled, and raw/ is the one channel that holds third-party text an
 # agent must never take instructions from.
@@ -267,7 +306,7 @@ def _profile_in_scope(
     if not parts:
         return False
     if parts[0] == "users":
-        return user_id is not None and len(parts) > 1 and parts[1] == user_id
+        return user_id is not None and len(parts) > 1 and parts[1] in (user_id, f"{user_id}.md")
     if parts[0] == "projects":
         if project_slug is None or len(parts) < 2:
             return False

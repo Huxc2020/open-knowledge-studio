@@ -1583,6 +1583,15 @@ def config_set(
         _set_strategy(value)
         console.print(f"[green]Set:[/green] strategy = {value}")
         return
+    elif key in _RECALL_YAML_KEYS:
+        # v0.5.12: settings/recall.yaml is the single source of truth for
+        # recall params. `oks config set` routes them to yaml, not config.json,
+        # so `oks recall` (which reads yaml) actually honors the value.
+        from knowledge_studio.recall import set_recall_yaml_param
+        from knowledge_studio.store import repo_root
+        set_recall_yaml_param(repo_root(), _RECALL_YAML_KEYS[key], value)
+        console.print(f"[green]Set:[/green] {key} = {value}  [dim](settings/recall.yaml)[/dim]")
+        return
     elif value.lower() in ("true", "false"):
         target[keys[-1]] = value.lower() == "true"
     elif value.isdigit():
@@ -1595,6 +1604,24 @@ def config_set(
 
 
 # ── Instance scaffolding ─────────────────────────────────────────
+
+# Map flat CLI keys (oks config set <key>) to (yaml_section, yaml_field)
+# in settings/recall.yaml. Anything here is routed to yaml, not config.json,
+# so recall (which reads yaml) honors the value. v0.5.12 single-source rule.
+_RECALL_YAML_KEYS = {
+    "search_backend": (None, "search_backend"),
+    "recall_floor": ("recall", "floor"),
+    "recall_topn": ("recall", "topn"),
+    "recall_minlen": ("recall", "minlen"),
+    "recall_cooldown": ("recall", "cooldown"),
+    "posttool_floor": ("posttool", "floor"),
+    "posttool_topn": ("posttool", "topn"),
+    "posttool_mode": ("posttool", "mode"),
+    "posttool_recall": ("posttool", "recall"),
+    "posttool_signal_rel_floor": ("posttool", "signal_rel_floor"),
+    "conflict_window": ("conflict", "window"),
+    "mail_topn": (None, "mail_topn"),
+}
 
 _INSTANCE_DIRS = [
     "profiles/users",

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.14 (2026-08-17)
+
+### 全面 review 修复（2 个 bug）
+
+**1. signal_rel_floor 半死配置 → 活起来**
+- post-tool-edit.py 的 `_should_signal` 第 3 步硬编码 `rel < 2.5`，不读 yaml
+- 改为读 `load_recall_params()['posttool_signal_rel_floor']`（fallback 2.5）
+- 现在 yaml 改 signal_rel_floor 真正生效——dsh-oks 设置卡 + oks metrics + hook 三处一致
+
+**2. oks config set recall 参数双轨漂移 → 写 recall.yaml**
+- v0.5.12 声明 settings/recall.yaml 是唯一参数真源，但 `oks config set` 还写 ~/.oks/config.json
+- recall 读 yaml 不读 config.json → search_backend 等参数配置了不生效
+- 修复：config_set 对 _RECALL_YAML_KEYS（search_backend/recall_*/posttool_*/conflict_window/mail_topn）调 set_recall_yaml_param 写 yaml
+- 其余 key（knowledge_base_path/handlers/api_keys/feishu）仍写 config.json
+
+### PR 处理（8 个）
+- merge #29 #30 #32 #33 #35 #36 #37（7 个，含 capability health fix + recall scope fix + docs）
+- close #34（signal_rel_floor 不删，已在 main 4fce21c 修复）
+
 ## v0.5.12 (2026-08-17)
 
 ### env 废弃 — settings/recall.yaml 是唯一参数真源
