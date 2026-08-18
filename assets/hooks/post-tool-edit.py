@@ -49,6 +49,21 @@ _PATCH_FILE_RE = re.compile(
 _PATCH_MOVE_RE = re.compile(r"^\*\*\*\s+Move to:\s*(.+?)\s*$")
 
 
+def _configure_utf8_stdout() -> None:
+    """Keep hook output portable across Windows code pages and Git Bash."""
+    stream = sys.stdout
+    encoding = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+    reconfigure = getattr(stream, "reconfigure", None)
+    if encoding not in {"utf8", "utf8sig"} and callable(reconfigure):
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            pass
+
+
+_configure_utf8_stdout()
+
+
 def _load_payload() -> dict:
     try:
         payload = json.load(sys.stdin)
@@ -490,7 +505,7 @@ def main() -> int:
                             "additionalContext": context,
                         }
                     },
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                 )
                 + "\n"
             )

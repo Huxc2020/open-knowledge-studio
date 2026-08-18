@@ -38,9 +38,11 @@ def _codex_commands(hooks, event):
     ]
 
 
-def _run_hook(script, payload, cwd):
+def _run_hook(script, payload, cwd, env_overrides=None):
     env = os.environ.copy()
     env["OKS_ROOT"] = str(cwd)
+    if env_overrides:
+        env.update(env_overrides)
     cli_root = Path(__file__).resolve().parents[1]
     env["PYTHONPATH"] = os.pathsep.join(
         [str(cli_root), env.get("PYTHONPATH", "")]
@@ -50,6 +52,7 @@ def _run_hook(script, payload, cwd):
         command,
         input=json.dumps(payload),
         text=True,
+        encoding="utf-8",
         capture_output=True,
         cwd=str(cwd),
         env=env,
@@ -124,7 +127,7 @@ def test_hook_install_migrates_codex_relative_lifecycle_paths(tmp_path):
     migrated = _load_codex_hooks(target)
     for event, script_name in legacy_commands.items():
         command = _codex_commands(migrated, event)[0]
-        assert command == str((target / ".codex" / "hooks" / script_name).resolve())
+        assert Path(command).resolve() == (target / ".codex" / "hooks" / script_name).resolve()
 
 
 def test_codex_posttool_apply_patch_records_files_and_emits_json_context(tmp_path):
@@ -170,6 +173,7 @@ def test_codex_posttool_apply_patch_records_files_and_emits_json_context(tmp_pat
             "model": "gpt-5",
         },
         target,
+        {"PYTHONIOENCODING": "cp1252"},
     )
 
     assert result.returncode == 0, result.stderr
@@ -286,21 +290,15 @@ def test_codex_pretooluse_blocks_invalid_added_wiki_patch(tmp_path):
 def test_codex_precompact_emits_json_system_message_and_saves_snapshot(tmp_path):
     target = _init_instance(tmp_path)
     script = target / ".codex" / "hooks" / "pre-compact.sh"
-    result = subprocess.run(
-        [str(script)],
-        input=json.dumps(
-            {
-                "hook_event_name": "PreCompact",
-                "session_id": "codex-session",
-                "cwd": str(target),
-                "model": "gpt-5",
-            }
-        ),
-        text=True,
-        capture_output=True,
-        cwd=str(target),
-        env={**os.environ, "OKS_ROOT": str(target)},
-        check=False,
+    result = _run_hook(
+        script,
+        {
+            "hook_event_name": "PreCompact",
+            "session_id": "codex-session",
+            "cwd": str(target),
+            "model": "gpt-5",
+        },
+        target,
     )
 
     assert result.returncode == 0, result.stderr
@@ -349,6 +347,7 @@ def test_non_codex_posttool_keeps_plain_text_conflict_output(tmp_path):
             "agent_id": "claude-agent",
         },
         target,
+        {"PYTHONIOENCODING": "cp1252"},
     )
 
     assert result.returncode == 0, result.stderr
