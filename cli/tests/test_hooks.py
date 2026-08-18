@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -38,6 +39,24 @@ def _codex_commands(hooks, event):
     ]
 
 
+def _bash_command():
+    if os.name != "nt":
+        return "bash"
+    git = shutil.which("git.exe") or shutil.which("git")
+    if git:
+        git_root = Path(git).resolve().parent.parent
+        candidate = git_root / "bin" / "bash.exe"
+        if candidate.is_file():
+            return str(candidate)
+    for variable in ("ProgramFiles", "ProgramFiles(x86)"):
+        program_files = os.environ.get(variable)
+        if program_files:
+            candidate = Path(program_files) / "Git" / "bin" / "bash.exe"
+            if candidate.is_file():
+                return str(candidate)
+    return "bash"
+
+
 def _run_hook(script, payload, cwd, env_overrides=None):
     env = os.environ.copy()
     env["OKS_ROOT"] = str(cwd)
@@ -47,7 +66,11 @@ def _run_hook(script, payload, cwd, env_overrides=None):
     env["PYTHONPATH"] = os.pathsep.join(
         [str(cli_root), env.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
-    command = ["bash", str(script)] if script.suffix == ".sh" else [sys.executable, str(script)]
+    command = (
+        [_bash_command(), str(script)]
+        if script.suffix == ".sh"
+        else [sys.executable, str(script)]
+    )
     return subprocess.run(
         command,
         input=json.dumps(payload),
@@ -215,11 +238,7 @@ def test_codex_pretooluse_blocks_invalid_added_wiki_patch(tmp_path):
         },
         target,
     )
-    assert blocked.returncode == 2, (
-        f"returncode={blocked.returncode}; "
-        f"stdout={blocked.stdout.encode('unicode_escape').decode()}; "
-        f"stderr={blocked.stderr.encode('unicode_escape').decode()}"
-    )
+    assert blocked.returncode == 2
     assert "frontmatter" in blocked.stderr
 
     valid_patch = "\n".join(
@@ -311,11 +330,7 @@ def test_codex_precompact_emits_json_system_message_and_saves_snapshot(tmp_path)
         target,
     )
 
-    assert result.returncode == 0, (
-        f"returncode={result.returncode}; "
-        f"stdout={result.stdout.encode('unicode_escape').decode()}; "
-        f"stderr={result.stderr.encode('unicode_escape').decode()}"
-    )
+    assert result.returncode == 0, result.stderr
     output = json.loads(result.stdout)
     assert output["systemMessage"].startswith("Snapshot saved:")
     assert list((target / ".oks" / "snapshots").glob("pre-compact-*.md"))
