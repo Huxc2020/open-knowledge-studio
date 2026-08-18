@@ -10,6 +10,7 @@ import contextlib
 import json
 import os
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -26,7 +27,9 @@ except ImportError:  # POSIX
 @contextmanager
 def file_lock(lock_path: Path):
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock_path.open("a+b")
+    if msvcrt is not None:
+        _ensure_windows_lock_file(lock_path)
+    handle = lock_path.open("r+b" if msvcrt is not None else "a+b")
     try:
         if fcntl is not None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -47,6 +50,32 @@ def file_lock(lock_path: Path):
             with contextlib.suppress(OSError):
                 msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
         handle.close()
+
+
+def _ensure_windows_lock_file(lock_path: Path) -> None:
+    """Create the byte used by ``msvcrt.locking`` without a first-use race."""
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+    flags |= getattr(os, "O_BINARY", 0)
+    for _ in range(100):
+        try:
+            fd = os.open(str(lock_path), flags)
+        except FileExistsError:
+            try:
+                if lock_path.stat().st_size >= 1:
+                    return
+            except FileNotFoundError:
+                continue
+            time.sleep(0.01)
+        else:
+            try:
+                os.write(fd, b"\0")
+            finally:
+                os.close(fd)
+            return
+    with lock_path.open("r+b") as seed:
+        if seed.seek(0, os.SEEK_END) == 0:
+            seed.write(b"\0")
+            seed.flush()
 
 
 def atomic_write_text(path: Path, content: str) -> None:
