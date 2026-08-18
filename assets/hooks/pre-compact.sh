@@ -4,12 +4,17 @@
 
 set -euo pipefail
 
-OKS_PYTHON_CMD="${OKS_PYTHON:-}"
-if [ -z "$OKS_PYTHON_CMD" ]; then
-    if python3 -c 'import sys' >/dev/null 2>&1; then
-        OKS_PYTHON_CMD="python3"
-    elif python -c 'import sys' >/dev/null 2>&1; then
+OKS_PYTHON_CMD="${OKS_PYTHON:-python3}"
+if [ -z "${OKS_PYTHON:-}" ] && [ "$OKS_PYTHON_CMD" = "python3" ]; then
+    case "$(uname -s 2>/dev/null || true)" in
+        MINGW*|MSYS*|CYGWIN*) OKS_PYTHON_CMD="python" ;;
+    esac
+fi
+if ! "$OKS_PYTHON_CMD" -c 'import sys' >/dev/null 2>&1; then
+    if [ -z "${OKS_PYTHON:-}" ] && [ "$OKS_PYTHON_CMD" != "python" ] && python -c 'import sys' >/dev/null 2>&1; then
         OKS_PYTHON_CMD="python"
+    else
+        OKS_PYTHON_CMD=""
     fi
 fi
 
