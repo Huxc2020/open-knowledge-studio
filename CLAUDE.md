@@ -140,8 +140,8 @@ oks distill [--dry-run]
 oks lint | status | metrics | decay
 oks capability list | status [--json/--text] | guide <provider-id>
 oks capability install <name> [--yes]
-oks hook install [--editor claude|qoder|both] [--path DIR]   # opt-in auto-recall on prompt
-oks hook status
+oks hook install [--editor claude|qoder|codex|both] [--path DIR]   # prompt recall + post-tool conflict detection
+oks hook status                                                     # wired state + Codex /hooks trust reminder
 oks eval recall <dataset.yaml> --output <run.json>
 oks eval compare <baseline.json> <candidate.json> [--output <comparison.json>]
 oks trace start <goal-id> [--run-id ID]

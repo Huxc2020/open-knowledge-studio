@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """UserPromptSubmit hook — auto-recall memory + goals + mail, inject as context.
 
-Reads the editor's JSON payload on stdin (Claude Code / Qoder / pi extension pass
+Reads the editor's JSON payload on stdin (Claude Code / Qoder / Codex / pi extension pass
 { prompt, session_id, cwd? }). Runs the OKS recall engine, reads active goals +
 unread mail, prints a structured <recalled-memory> block on stdout.
 

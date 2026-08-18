@@ -4,6 +4,16 @@
 
 set -euo pipefail
 
+HOOK_INPUT=$(cat)
+HOOK_IS_CODEX=$(printf '%s' "$HOOK_INPUT" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    print("1" if data.get("hook_event_name") == "PreCompact" and data.get("model") else "")
+except Exception:
+    print("")
+' 2>/dev/null || true)
+
 REPO_ROOT="${OKS_ROOT:-}"
 if [ -z "$REPO_ROOT" ]; then
     REPO_ROOT="$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.oks/config.json'))).get('knowledge_base_path',''))" 2>/dev/null || true)"
@@ -47,5 +57,14 @@ $(oks status 2>/dev/null || echo "(oks not available)")
 \`\`\`
 EOF
 
-echo "Snapshot saved: $SNAPSHOT_FILE"
+if [ "$HOOK_IS_CODEX" = "1" ]; then
+    python3 - "$SNAPSHOT_FILE" <<'PY'
+import json
+import sys
+
+print(json.dumps({"systemMessage": f"Snapshot saved: {sys.argv[1]}"}, ensure_ascii=False))
+PY
+else
+    echo "Snapshot saved: $SNAPSHOT_FILE"
+fi
 exit 0

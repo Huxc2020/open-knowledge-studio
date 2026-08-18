@@ -1911,7 +1911,61 @@ _POST_TOOL_SCRIPT_NAME = "post-tool-edit.sh"
 _HOOK_EDITORS = {
     "claude": ".claude/settings.json",
     "qoder": ".qoder/settings.json",
+    "codex": ".codex/hooks.json",
 }
+_HOOK_SCRIPT_DIRS = {
+    "claude": ".claude/hooks",
+    "qoder": ".claude/hooks",
+    "codex": ".codex/hooks",
+}
+_CODEX_LIFECYCLE_SCRIPTS = (
+    "validate-wiki-write.sh",
+    "pre-compact.sh",
+    "session-start.sh",
+)
+
+
+def _hook_command_matches_script(command: str, script_name: str) -> bool:
+    """Match bare, quoted, or stale absolute hook commands by script name."""
+    return str(command or "").strip().rstrip("\"' ").endswith(script_name)
+
+
+def _migrate_codex_hook_paths(settings_path: Path, root: Path) -> bool:
+    """Rewrite legacy relative Codex lifecycle commands to repo-root paths."""
+    if not settings_path.exists():
+        return False
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8")) or {}
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{settings_path} is not valid JSON: {e}") from e
+
+    changed = False
+    hooks = data.get("hooks", {})
+    for groups in hooks.values():
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            for handler in group.get("hooks", []):
+                command = str(handler.get("command", "") or "").strip().strip("\"' ")
+                for script_name in _CODEX_LIFECYCLE_SCRIPTS:
+                    legacy_paths = {
+                        f".codex/hooks/{script_name}",
+                        f"$(git rev-parse --show-toplevel)/.codex/hooks/{script_name}",
+                    }
+                    if command in legacy_paths:
+                        handler["command"] = (
+                            root / ".codex" / "hooks" / script_name
+                        ).resolve().as_posix()
+                        changed = True
+                        break
+
+    if not changed:
+        return False
+    shutil.copy2(settings_path, settings_path.with_suffix(".json.oks-bak"))
+    store._atomic_write(
+        settings_path, json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    )
+    return True
 
 
 @app.command(name="skills-install")
@@ -2212,8 +2266,8 @@ def registry_remove(
         console.print(f"[yellow]Not found[/yellow] {agent_id} @ {cwd}")
 
 
-def _ensure_recall_scripts(root: Path) -> list[str]:
-    """Copy/refresh the recall hook scripts in <root>/.claude/hooks/.
+def _ensure_recall_scripts(root: Path, hooks_dir: Path | None = None) -> list[str]:
+    """Copy/refresh the recall hook scripts into an agent's hooks directory.
 
     The .sh wrapper gets the current interpreter baked into its OKS_PYTHON
     fallback. If an existing .sh lacks the current bake (fresh copy still on
@@ -2224,7 +2278,7 @@ def _ensure_recall_scripts(root: Path) -> list[str]:
     import stat
     import sys
 
-    hooks_dir = root / ".claude" / "hooks"
+    hooks_dir = hooks_dir or (root / ".claude" / "hooks")
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
     base = _asset_source()
@@ -2291,7 +2345,7 @@ def _wire_userpromptsubmit(settings_path: Path, command: str) -> str:
             cmd = h.get("command", "")
             if cmd == command:
                 return "exists"
-            if cmd.endswith(_RECALL_HOOK_SCRIPT_NAME):
+            if _hook_command_matches_script(cmd, _RECALL_HOOK_SCRIPT_NAME):
                 stale = h
     if stale is not None:
         stale["command"] = command
@@ -2325,7 +2379,7 @@ def _wire_posttooluse(settings_path: Path, command: str) -> str:
             cmd = h.get("command", "")
             if cmd == command:
                 return "exists"
-            if cmd.endswith(_POST_TOOL_SCRIPT_NAME):
+            if _hook_command_matches_script(cmd, _POST_TOOL_SCRIPT_NAME):
                 stale = h
     if stale is not None:
         stale["command"] = command
@@ -2340,38 +2394,44 @@ def _wire_posttooluse(settings_path: Path, command: str) -> str:
     return "wired"
 
 
-def _hook_is_wired(settings_path: Path) -> bool:
+def _hook_event_is_wired(settings_path: Path, event: str, script_name: str) -> bool:
     if not settings_path.exists():
         return False
     try:
         data = json.loads(settings_path.read_text(encoding="utf-8")) or {}
     except json.JSONDecodeError:
         return False
-    for group in data.get("hooks", {}).get("UserPromptSubmit", []):
+    for group in data.get("hooks", {}).get(event, []):
         for h in group.get("hooks", []):
-            if h.get("command", "").endswith(_RECALL_HOOK_SCRIPT_NAME):
+            if _hook_command_matches_script(h.get("command", ""), script_name):
                 return True
     return False
+
+
+def _hook_is_wired(settings_path: Path) -> bool:
+    return _hook_event_is_wired(
+        settings_path, "UserPromptSubmit", _RECALL_HOOK_SCRIPT_NAME
+    )
 
 
 @hook_app.command("install")
 def hook_install(
     editor: str = typer.Option(
-        "both", "--editor", "-e", help="Which editor(s) to wire: claude | qoder | both"
+        "both", "--editor", "-e", help="Which editor(s) to wire: claude | qoder | codex | both"
     ),
     path: Optional[str] = typer.Option(
         None, "--path", help="Instance root (default: active KB from ~/.oks/config.json)"
     ),
 ):
-    """Wire the auto-recall UserPromptSubmit hook into your editor settings (opt-in).
+    """Wire prompt recall and post-tool conflict hooks into editor settings (opt-in).
 
-    Copies the recall hook script into .claude/hooks/ (if missing) and adds a
-    UserPromptSubmit entry to the chosen editor's settings. Idempotent and
+    Copies the hook scripts into the chosen editor's hook directory (if missing)
+    and adds UserPromptSubmit + PostToolUse entries. Idempotent and
     non-destructive: existing settings and hooks are preserved.
     """
     editor = editor.lower().strip()
-    if editor not in ("claude", "qoder", "both"):
-        console.print("[red]--editor must be one of: claude, qoder, both[/red]")
+    if editor not in ("claude", "qoder", "codex", "both"):
+        console.print("[red]--editor must be one of: claude, qoder, codex, both[/red]")
         raise typer.Exit(1)
 
     import platform
@@ -2386,37 +2446,62 @@ def hook_install(
         console.print(f"[red]Instance root not found:[/red] {root}")
         raise typer.Exit(1)
 
-    try:
-        created = _ensure_recall_scripts(root)
-    except FileNotFoundError as e:
-        console.print(
-            f"[red]Cannot install hook — bundled assets missing.[/red]\n"
-            f"  {e}\n"
-            f"  This happens when oks was installed from source without the asset bundle.\n"
-            f"  Fix: [bold]pipx upgrade open-knowledge-studio[/bold],\n"
-            f"  or run [bold]python cli/scripts/bundle_assets.py[/bold] in the repo before installing."
-        )
-        raise typer.Exit(1)
-    if created:
-        console.print(f"[green]Installed hook script:[/green] {', '.join(created)}")
-
-    hook_cmd = (root / ".claude" / "hooks" / _RECALL_HOOK_SCRIPT_NAME).resolve().as_posix()
-    post_cmd = (root / ".claude" / "hooks" / _POST_TOOL_SCRIPT_NAME).resolve().as_posix()
     editors = ("claude", "qoder") if editor == "both" else (editor,)
+
+    # Claude and Qoder share one script directory; Codex has its own project
+    # hook layer. Materialize each directory once even when both shared editors
+    # are selected.
+    hook_dirs = []
+    for name in editors:
+        hooks_dir = root / _HOOK_SCRIPT_DIRS[name]
+        if hooks_dir not in hook_dirs:
+            hook_dirs.append(hooks_dir)
+    for hooks_dir in hook_dirs:
+        try:
+            created = _ensure_recall_scripts(root, hooks_dir=hooks_dir)
+        except FileNotFoundError as e:
+            console.print(
+                f"[red]Cannot install hook — bundled assets missing.[/red]\n"
+                f"  {e}\n"
+                f"  This happens when oks was installed from source without the asset bundle.\n"
+                f"  Fix: [bold]pipx upgrade open-knowledge-studio[/bold],\n"
+                f"  or run [bold]python cli/scripts/bundle_assets.py[/bold] in the repo before installing."
+            )
+            raise typer.Exit(1)
+        if created:
+            console.print(
+                f"[green]Installed hook script ({hooks_dir}):[/green] {', '.join(created)}"
+            )
+
     for name in editors:
         settings_path = root / _HOOK_EDITORS[name]
+        script_dir = root / _HOOK_SCRIPT_DIRS[name]
+        if name == "codex":
+            _migrate_codex_hook_paths(settings_path, root)
+        hook_cmd = (script_dir / _RECALL_HOOK_SCRIPT_NAME).resolve().as_posix()
         result = _wire_userpromptsubmit(settings_path, hook_cmd)
+        post_cmd = (script_dir / _POST_TOOL_SCRIPT_NAME).resolve().as_posix()
         post_result = _wire_posttooluse(settings_path, post_cmd)
         label = "[green]wired[/green]" if result == "wired" else "[dim]already wired[/dim]"
         post_label = "[green]+conflict[/green]" if post_result == "wired" else "[dim]+conflict (exists)[/dim]"
         console.print(f"  {name}: {label} {post_label} → {settings_path}")
 
-    console.print(
-        "\n[bold]Auto-recall + conflict detection enabled.[/bold]\n"
-        "New prompts inject relevant memory; file edits across agents trigger conflict mail.\n"
-        "Tune via env: OKS_RECALL_FLOOR (0.7), OKS_RECALL_TOPN (3), OKS_RECALL_MINLEN (6),\n"
-        "  OKS_CONFLICT_WINDOW (300s)."
+    features = ["auto-recall", "conflict detection"]
+    conflict_message = "File edits across agents trigger conflict mail.\n"
+    trust_message = (
+        "Codex: run `/hooks` in Codex to review and trust the current hook definitions.\n"
+        if "codex" in editors
+        else ""
     )
+    message = (
+        f"\n[bold]{' + '.join(features).capitalize()} enabled.[/bold]\n"
+        + "New prompts inject relevant memory.\n"
+        + conflict_message
+        + trust_message
+        + "Tune via env: OKS_RECALL_FLOOR (0.7), OKS_RECALL_TOPN (3), OKS_RECALL_MINLEN (6),\n"
+        + "  OKS_CONFLICT_WINDOW (300s)."
+    )
+    console.print(message)
 
 
 @hook_app.command("status")
@@ -2425,31 +2510,45 @@ def hook_status(
 ):
     """Show whether the auto-recall hook is installed for each editor."""
     root = _instance_root(path)
-    script = root / ".claude" / "hooks" / "user-prompt-recall.sh"
     console.print(f"[bold]Instance:[/bold] {root}")
-    console.print(f"  script: {'present' if script.is_file() else 'missing'} ({script})")
-    if script.is_file():
-        import os
-        import re
-        import subprocess
-        m = re.search(r"\$\{OKS_PYTHON:-([^}]+)\}", script.read_text(encoding="utf-8"))
-        py = os.environ.get("OKS_PYTHON") or (m.group(1) if m else "python3")
-        try:
-            ok = subprocess.run(
-                [py, "-c", "import knowledge_studio"],
-                capture_output=True, timeout=15,
-            ).returncode == 0
-        except (OSError, subprocess.TimeoutExpired):
-            ok = False
-        state = ("[green]importable[/green]" if ok
-                 else "[red]hook script has stale interpreter — "
-                      "run `oks hook install` to re-bake[/red]")
-        console.print(f"  engine: {state} (python: {py})")
+    import os
+    import re
+    import subprocess
+    shown_dirs = []
+    for name in _HOOK_EDITORS:
+        hooks_dir = root / _HOOK_SCRIPT_DIRS[name]
+        if hooks_dir in shown_dirs:
+            continue
+        shown_dirs.append(hooks_dir)
+        script = hooks_dir / _RECALL_HOOK_SCRIPT_NAME
+        label = "script" if name == "claude" else f"{name} script"
+        console.print(f"  {label}: {'present' if script.is_file() else 'missing'} ({script})")
+        if script.is_file():
+            m = re.search(r"\$\{OKS_PYTHON:-([^}]+)\}", script.read_text(encoding="utf-8"))
+            py = os.environ.get("OKS_PYTHON") or (m.group(1) if m else "python3")
+            try:
+                ok = subprocess.run(
+                    [py, "-c", "import knowledge_studio"],
+                    capture_output=True, timeout=15,
+                ).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                ok = False
+            state = ("[green]importable[/green]" if ok
+                     else "[red]hook script has stale interpreter — "
+                          "run `oks hook install` to re-bake[/red]")
+            console.print(f"  {label} engine: {state} (python: {py})")
     for name, rel in _HOOK_EDITORS.items():
         settings_path = root / rel
         wired = _hook_is_wired(settings_path)
         state = "[green]wired[/green]" if wired else "[dim]not wired[/dim]"
         console.print(f"  {name}: {state}")
+        post_wired = _hook_event_is_wired(
+            settings_path, "PostToolUse", _POST_TOOL_SCRIPT_NAME
+        )
+        post_state = "[green]wired[/green]" if post_wired else "[dim]not wired[/dim]"
+        console.print(f"  {name} PostToolUse: {post_state}")
+        if name == "codex":
+            console.print("  codex trust: review with `/hooks`")
 
 
 if __name__ == "__main__":

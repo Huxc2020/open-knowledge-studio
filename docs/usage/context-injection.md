@@ -21,17 +21,20 @@ OKS 的核心定位是 **Agent 状态栏注入 + Recall 原语**：召回 `wiki/
 
 每条含 slug + title + type + relevance + 160 字 body_preview。Agent 看到 slug 可 cite，preview 够它判断要不要深读。
 
-## 三种 editor 支持
+## 支持的 editor
 
-OKS 的注入走 editor 的 prompt-submit hook 机制。三种 editor 走不同路径：
+OKS 的注入走 editor 的 prompt-submit hook 机制。不同 editor 走不同路径：
 
 | editor | 机制 | 配置文件 |
 |--------|------|---------|
 | Claude Code | `UserPromptSubmit` hook | `.claude/settings.json` |
 | Qoder | `UserPromptSubmit` hook | `.qoder/settings.json` |
+| Codex CLI | `UserPromptSubmit` + `PostToolUse` hooks | `.codex/hooks.json` |
 | pi | TypeScript Extension（`before_agent_start` 事件）| `.pi/extensions/oks-recall.ts` |
 
 **claude + qoder** 共用同一个 hook 脚本（`.claude/hooks/user-prompt-recall.py`），settings.json wire 一个 `UserPromptSubmit` command。
+
+**Codex CLI** 使用 `.codex/hooks/` 下的 prompt、post-tool、Wiki 校验和 compact 脚本，在 `.codex/hooks.json` 中 wire `UserPromptSubmit` + `PostToolUse`；prompt hook 的普通 stdout、PostToolUse 的 JSON `hookSpecificOutput.additionalContext` 会注入 Codex。首次安装或脚本变更后，在 Codex 中打开 `/hooks` 审核并信任当前 hook 定义。
 
 **pi** 不读 settings.json（独立 harness，用 TypeScript Extensions + `.pi/`），要装一个 extension 订阅 `before_agent_start` 事件，调同一个脚本，把 stdout 注入为 persistent message。
 
@@ -49,6 +52,27 @@ oks hook status               # 查状态：script + engine + wired
 
 - `.claude/hooks/user-prompt-recall.{py,sh}`——脚本（`.sh` wrapper bake python 路径，`.py` 引擎）
 - `.claude/settings.json` + `.qoder/settings.json`——wire `UserPromptSubmit` command
+
+### Codex CLI
+
+```bash
+oks hook install --editor codex
+oks hook status               # 查看 Codex script + engine + wired 状态
+```
+
+装什么：
+
+- `.codex/hooks/user-prompt-recall.{py,sh}`——Codex 专用脚本副本
+- `.codex/hooks/post-tool-edit.{py,sh}`——长任务 recall 补位 + `apply_patch` 文件冲突检测
+- `.codex/hooks/validate-wiki-write.sh`——`apply_patch` 写入 Wiki 前校验 frontmatter
+- `.codex/hooks/pre-compact.sh` / `session-start.sh`——compact snapshot 与会话摘要
+- `.codex/hooks.json`——保留已有 hooks，并追加 `UserPromptSubmit` + `PostToolUse` commands
+
+Codex 的 `apply_patch` 文件路径来自 `tool_input.command`，不是 Claude/Qoder 的
+`tool_input.file_path`；OKS 会解析 `Add/Update/Delete File` 并统一成绝对路径。
+Codex 的 PostToolUse 普通 stdout 不会注入模型，因此冲突消息和 recall 补位使用
+`hookSpecificOutput.additionalContext` JSON 输出。安装后 `oks hook status` 会同时显示
+PostToolUse 和 `/hooks` trust 提示。
 
 ### pi
 
@@ -97,7 +121,7 @@ Agent ID、工作目录或人工评论。提交到 Git 前应按团队隐私政�
 
 两个 hook 协同：
 - **UserPromptSubmit**（用户意图主线）：用户说话时注入，floor 0.7 / topn 3，覆盖广
-- **PostToolUse**（执行补位）：工具调用后注入，floor 0.9 / topn 2，只补高置信
+- **PostToolUse**（执行补位）：工具调用后注入，floor 0.9 / topn 2，只补高置信；Claude/Qoder 使用纯文本 stdout，Codex 使用 JSON `additionalContext`
 
 **测试**（xinhai KB）：Edit `recall.py` → query='recall' → 注入 OSS call chain + AI agent 记忆（rel 2.918/2.908）。第二次同 query → cooldown 跳过。
 
@@ -151,7 +175,7 @@ export default function (pi: ExtensionAPI) {
 
 设计要点：
 
-- **复用 hook 脚本**——pi extension 不重写 recall/cooldown 逻辑，调同一个 `.py`。三种 editor 共享一套注入引擎，只在"怎么触发"上分叉。
+- **复用 hook 脚本**——pi extension 不重写 recall/cooldown 逻辑，调同一个 `.py`。各 editor 共享一套注入引擎，只在"怎么触发"上分叉。
 - **KB root 解析走 config**——`recall()` 内部 `OKS_ROOT → config → cwd`，所以开发仓库（wiki/ 空）也能从配置的 KB 注入。
 - **`display: true`** 测试期透明显示（用户看到注入了啥），稳定后改 `false` 静默注入。
 - **fail open**——任何错误 return（不抛），prompt 永不因 recall 失败被阻塞。
@@ -170,13 +194,13 @@ echo '{"prompt":"git branch 命名规范","session_id":"test"}' | bash .claude/h
 
 ### 真实注入（editor 内）
 
-在装了 hook 的项目开 Claude Code / pi，提交 ≥6 字相关 prompt：
+在装了 hook 的项目开 Claude Code / Qoder / Codex CLI / pi，提交 ≥6 字相关 prompt：
 
 ```
 git branch 命名规范是什么
 ```
 
-Agent context 收到 `<recalled-memory>`——Claude Code 静默注入（用户看不到块，LLM 看到）；pi `display: true` 透明显示。
+Agent context 收到 `<recalled-memory>`——Claude Code、Qoder、Codex CLI 静默注入（用户看不到块，LLM 看到）；pi `display: true` 透明显示。
 
 ### 验证清单
 
@@ -283,13 +307,13 @@ feedback 进**分析**不进**评分**——confidence 只在指纹命中 +0.1�
 
 `post-tool-edit.py`（PostToolUse hook）检测多 Agent 协同编辑冲突：
 
-1. 读 stdin JSON payload（`tool_name` + `tool_input.file_path` + `session_id` + `cwd`）
-2. 只 watch Edit/Write/MultiEdit（不 watch read/search）
+1. 读 stdin JSON payload（`tool_name` + `tool_input` + `session_id` + `cwd`）
+2. Claude/Qoder watch Edit/Write/MultiEdit；Codex watch `apply_patch` 并解析 `tool_input.command`
 3. 写 `records/file-edits.jsonl`（agent_id + file + ts，git 共享）
 4. 查该文件最近 `OKS_CONFLICT_WINDOW`（默认 300s = 5 分钟）内是否有其他 Agent 编辑过
 5. 冲突 → 写 `mail/inbox/`（type=conflict, priority=urgent, action=review）给当前 Agent
 
-`oks hook install` 同时 wire UserPromptSubmit（recall）+ PostToolUse（冲突检测）到 settings.json，幂等。
+对 Claude Code / Qoder / Codex，`oks hook install --editor ...` 都会幂等 wire UserPromptSubmit（recall）+ PostToolUse（冲突检测）。Codex 的 patch 路径会先归一化为绝对路径，避免相对路径和不同 Agent cwd 导致冲突漏报。
 
 可调：`OKS_CONFLICT_WINDOW`（300s）、`OKS_AGENT_ID`（默认 cwd basename）。
 

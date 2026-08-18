@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/hooks/validate-wiki-write.sh"
+            "command": "\"$(git rev-parse --show-toplevel)/.codex/hooks/validate-wiki-write.sh\""
           }
         ]
       }
@@ -16,7 +16,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/hooks/pre-compact.sh"
+            "command": "\"$(git rev-parse --show-toplevel)/.codex/hooks/pre-compact.sh\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel)/.codex/hooks/post-tool-edit.sh\"",
+            "additionalContextLimit": 2000
           }
         ]
       }
@@ -26,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/hooks/session-start.sh"
+            "command": "\"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.sh\""
           }
         ]
       }

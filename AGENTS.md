@@ -148,8 +148,8 @@ oks registry list|bind|remove
 # Feishu (参考实现，已从核心迁出 → examples/oh-my-feishu/)
 # 不再随 oks CLI 分发；见 examples/oh-my-feishu/code/ 的 feishu_base_worker.py / feishu_setup.py
 
-# Hooks (opt-in auto-recall)
-oks hook install [--editor claude|qoder|both] [--path DIR]
+# Hooks (opt-in auto-recall + post-tool conflict detection)
+oks hook install [--editor claude|qoder|codex|both] [--path DIR]
 oks hook status
 
 # Evaluation

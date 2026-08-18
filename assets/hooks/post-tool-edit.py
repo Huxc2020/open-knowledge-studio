@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """PostToolUse hook — file conflict detection + recall supplement.
 
-Reads JSON payload on stdin (Claude Code / Qoder PostToolUse):
-{ tool_name, tool_input, session_id, cwd }.
+Reads JSON payload on stdin (Claude Code / Qoder / Codex PostToolUse):
+{ hook_event_name?, tool_name, tool_input, session_id, cwd }.
 
 Two jobs (both fail-open, never block a tool):
 
-1. **File conflict detection** (Edit/Write/MultiEdit only):
+1. **File conflict detection** (Edit/Write/MultiEdit/apply_patch):
    - Append to records/file-edits.jsonl (agent_id + file + ts) — git-shared
    - Check if another agent edited the same file within CONFLICT_WINDOW
    - If conflict, write mail to inbox/ for current agent (type=conflict)
@@ -20,6 +20,8 @@ Two jobs (both fail-open, never block a tool):
      recall with a HIGHER floor (0.9) + lower topn (2) to avoid noise.
    - Shares recall-state-{session}.json + cooldown with UserPromptSubmit so
      the same slug isn't re-injected twice.
+   - Codex receives conflict/recall text as PostToolUse JSON
+     `hookSpecificOutput.additionalContext`; Claude Code/Qoder retain plain text.
 
 Tunables via env:
   OKS_CONFLICT_WINDOW  seconds to consider a conflict (default 300 = 5 min)
@@ -40,7 +42,11 @@ from _persistence import append_jsonl, atomic_write_text, file_lock
 
 CONFLICT_WINDOW = int(os.environ.get("OKS_CONFLICT_WINDOW", "300"))
 
-EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "edit", "write", "multiedit"}
+EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "edit", "write", "multiedit", "apply_patch"}
+_PATCH_FILE_RE = re.compile(
+    r"^\*\*\*\s+(Add|Update|Delete) File:\s*(.+?)\s*$"
+)
+_PATCH_MOVE_RE = re.compile(r"^\*\*\*\s+Move to:\s*(.+?)\s*$")
 
 
 def _load_payload() -> dict:
@@ -77,6 +83,49 @@ def _agent_id(payload: dict, cwd: str) -> str:
         if name:
             return name
     return "unknown"
+
+
+def _normalise_file_path(file_path: str, cwd: str = "") -> str:
+    """Use one comparable path representation across editor hook payloads."""
+    raw = str(file_path or "").strip()
+    if not raw:
+        return ""
+    path = Path(raw)
+    if not path.is_absolute() and cwd:
+        path = Path(cwd) / path
+    try:
+        return str(path.resolve())
+    except OSError:
+        return path.as_posix()
+
+
+def _extract_apply_patch_files(command: str, cwd: str = "") -> list[str]:
+    """Extract files touched by Codex's apply_patch command payload."""
+    paths: list[str] = []
+    for line in str(command or "").splitlines():
+        file_match = _PATCH_FILE_RE.match(line)
+        move_match = _PATCH_MOVE_RE.match(line)
+        if file_match:
+            raw_path = file_match.group(2)
+        elif move_match:
+            raw_path = move_match.group(1)
+        else:
+            continue
+        path = _normalise_file_path(raw_path, cwd)
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def _tool_file_paths(tool_name: str, tool_input: dict, cwd: str = "") -> list[str]:
+    if tool_name == "apply_patch":
+        return _extract_apply_patch_files(str(tool_input.get("command", "") or ""), cwd)
+    paths: list[str] = []
+    for key in ("file_path", "path"):
+        path = _normalise_file_path(str(tool_input.get(key, "") or ""), cwd)
+        if path and path not in paths:
+            paths.append(path)
+    return paths
 
 
 # ── File conflict detection (unchanged) ──
@@ -222,7 +271,7 @@ def _append_inject_trace(
         pass
 
 
-def _query_from_tool(tool_name: str, tool_input: dict) -> str:
+def _query_from_tool(tool_name: str, tool_input: dict, cwd: str = "") -> str:
     """Extract a recall query from the tool operation.
 
     Long-task agent has no user prompt — we derive a query from what the
@@ -231,12 +280,10 @@ def _query_from_tool(tool_name: str, tool_input: dict) -> str:
       Bash                      → command first ~6 meaningful words
       Grep/Glob                 → pattern
     """
-    for k in ("file_path", "path"):
-        fp = str(tool_input.get(k, "") or "")
-        if fp:
-            stem = Path(fp).stem
-            if stem:
-                return stem
+    for fp in _tool_file_paths(tool_name, tool_input, cwd):
+        stem = Path(fp).stem
+        if stem:
+            return stem
     cmd = str(tool_input.get("command", "") or "")
     if cmd:
         # Filter path tokens (~/, /) + stopwords to get meaningful query.
@@ -403,13 +450,16 @@ def main() -> int:
     cwd = str(payload.get("cwd", "") or "") or str(os.getcwd())
     agent_id = _agent_id(payload, cwd)
     session_id = str(payload.get("session_id", "") or "") or cwd
+    # Codex includes the Codex-specific `model` field in common hook input;
+    # apply_patch is also unambiguous when older payloads omit it. Claude Code
+    # and Qoder may use the same event name but keep their plain-text contract.
+    is_codex = bool(payload.get("model")) or tool_name == "apply_patch"
 
     output_parts = []
 
-    # 1. File conflict detection (Edit/Write/MultiEdit only)
+    # 1. File conflict detection (Edit/Write/MultiEdit/apply_patch only)
     if tool_name in EDIT_TOOLS:
-        file_path = str(tool_input.get("file_path", "") or "")
-        if file_path:
+        for file_path in _tool_file_paths(tool_name, tool_input, cwd):
             _append_file_edit(kb_root, agent_id, file_path)
             other = _check_conflict(kb_root, agent_id, file_path)
             if other:
@@ -423,14 +473,29 @@ def main() -> int:
     # Set OKS_POSTTOOL_RECALL=0 to disable (keep conflict detection only).
     recall_on = os.environ.get("OKS_POSTTOOL_RECALL", "1") != "0"
     if recall_on:
-        query = _query_from_tool(tool_name, tool_input)
+        query = _query_from_tool(tool_name, tool_input, cwd)
         if query:
             block = _recall_supplement(kb_root, session_id, query, agent_id, tool_name)
             if block:
                 output_parts.append(block)
 
     if output_parts:
-        sys.stdout.write("\n".join(output_parts) + "\n")
+        context = "\n".join(output_parts)
+        if is_codex:
+            sys.stdout.write(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PostToolUse",
+                            "additionalContext": context,
+                        }
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+        else:
+            sys.stdout.write(context + "\n")
         sys.stdout.flush()
     return 0
 
