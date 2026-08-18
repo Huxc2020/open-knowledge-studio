@@ -1938,7 +1938,8 @@ def _bake_codex_lifecycle_hooks(root: Path) -> None:
     import sys
 
     hooks_dir = root / ".codex" / "hooks"
-    baked = f'"${{OKS_PYTHON:-{sys.executable}}}"'
+    shell_python = sys.executable.replace("\\", "/")
+    baked = f'"${{OKS_PYTHON:-{shell_python}}}"'
     markers = (
         '"${OKS_PYTHON:-python3}"',
         '"${OKS_PYTHON:-}"',
