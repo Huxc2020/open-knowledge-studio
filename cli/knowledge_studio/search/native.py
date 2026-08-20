@@ -1,5 +1,7 @@
-"""Native backend — OKS 默认召回（6+1 因子 + jieba + IDF + title boost）。
+"""Native backend — OKS legacy 召回（6+1 因子 + jieba + IDF + title boost）。
 
+v0.6.0 前默认召回；v0.6.0+ 默认改 fts5（node-level BM25, R@1=0.825）。
+native 保留作向后兼容 + --explain 七因子逐项分可见 + fusion re-rank 用。
 包装 ``recall()``，无新依赖，实时遍历 wiki/。
 """
 from __future__ import annotations

@@ -16,6 +16,7 @@ userprompt:
 conflict:
   window: 300
 search_backend: fts5  # v0.6.0: 默认 fts5 node-level (吸收 TreeSearch, P@3=96%)
+embedding_fallback: false  # v0.6.3: fts5 召回空/不足时切 embedding 补充（默认关, embedding 慢）
 mail_topn: 3
 
 # v0.6.0: Token Budget 分层注入（CV from karpathy-wiki L0-L3）

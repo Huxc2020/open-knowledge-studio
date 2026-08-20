@@ -1,40 +1,18 @@
----
-title: 审查 OKS Core 与 Connector 的职责边界
-type: goal
-owner: example
-period: ongoing
-status: draft
-domains:
-  - computing
-keywords:
-  - core
-  - connector
-  - architecture
-  - evidence
-  - human review
+# 示例 Goal：学透一本书
+
+> 在 Agent 里说一句话就能创建，不用自己填字段：
+> "我要学《深入理解 AI Agent》，目标：能讲清楚记忆和知识库怎么设计。请帮我建立学习目标。"
+
+我的目标：能用自己的话讲清楚《深入理解 AI Agent》第 3 章的记忆与知识库设计。
+
 ---
 
-# 示例 Goal：审查 Core 与 Connector 的职责边界
+## 这个文件是什么
 
-> 这是可复制的示例，不是已激活的个人目标。复制到你的 OKS 实例后，先修改研究问题、
-> `owner` 和资料范围，确认边界后再将 `status` 改为 `active`。
+它是你告诉 OKS"我现在在学什么"的地方。之后你问它问题，它会优先把和这个目标相关的知识找出来。
 
-## Objective
+## 怎么用
 
-基于当前宪法、代码和 Connector 仓库，形成一份可追溯的职责边界判断，说明哪些能力属于
-OKS Core，哪些机械采集与格式处理应留给 Connector。
-
-## Key Results
-
-- [ ] 收录当前宪法、Core 说明和 Connector 说明，保留各自来源。
-- [ ] Candidate 区分代码事实、维护者原则和推断。
-- [ ] 人工审核至少一条边界判断，并记录接受、编辑或拒绝理由。
-- [ ] 能通过 Recall 找回边界结论及其证据。
-- [ ] 发现文档与实现冲突时保留冲突，不擅自统一口径。
-
-## 边界
-
-- 不给 OKS 增加与知识生命周期无关的能力。
-- Connector 只负责采集和机械提取，不拥有 Candidate、Review 或 Wiki 状态。
-- 未经人审，不把研究结论自动晋升为 Wiki。
-- 个人研究产物保存在独立知识库，不提交进框架仓库。
+1. 在 Agent 里说上面那句话（换成你自己的书名和目标）。
+2. Agent 会帮你创建这个文件，字段它自己填。
+3. 学完几篇后，直接问 OKS："AI Agent 的记忆体系是怎么设计的？"——它会把相关的笔记优先找出来。

@@ -10,7 +10,7 @@ Wiki 页面只有在存在 trace 证据或 `human_reviewed_at` 时才能在 Agen
 `[verified]`。`active`、高 `confidence` 或较多使用次数都不能自行产生该标签。
 
 `wiki/` 是**语义记忆**桶：经 Dreaming 蒸馏、人工审查后从 `raw/` 提升而来的
-策展知识。它是召回引擎的主战场——每次查询都在这里做 6+1 因子相关性打分并叠加
+策展知识。它是召回引擎的主战场——每次查询都在这里做 fts5 node-level BM25 召回并叠加 oks 灵魂 boost
 记忆曲线。
 
 ## 定位
@@ -18,7 +18,7 @@ Wiki 页面只有在存在 trace 证据或 `human_reviewed_at` 时才能在 Agen
 | 属性 | 值 |
 |------|-----|
 | 来源 | raw → drafts →（人工审查）→ wiki |
-| 召回方式 | 6+1 因子相关性 + 记忆曲线 |
+| 召回方式 | fts5 node-level BM25 + 注入层灵魂 boost + 记忆曲线 |
 | 衰减 | 类型特定 λ |
 | Scope | `domain`（知识域） |
 
@@ -50,7 +50,7 @@ wiki/{domain}/{concepts|strategies|anti-patterns}/{slug}.md
 
 分数落入 tier：`hot ≥ 0.7`、`warm ≥ 0.4`、`cold ≥ 0.15`、`evictable < 0.15`。
 
-## 召回：6+1 因子相关性
+## 召回：fts5 node-level + oks 灵魂分层
 
 `recall.py` `_compute_relevance` 对每个候选页面累加：
 

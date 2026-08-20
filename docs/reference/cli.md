@@ -14,7 +14,7 @@ parent: 参考
 | `oks init <path>` | 创建实例（物化认知桶、配置、Schema 与 Agent skills） |
 | `oks status` | 知识库概览（wiki/raw 计数 + tier + 质量） |
 | `oks metrics [--html]` | 知识指标；可生成基于注入与反馈记录的本地 HTML 报告和调参建议 |
-| `oks recall "<q>"` | 召回（6+1 因子，双路 wiki + raw） |
+| `oks recall "<q>"` | 召回（fts5 node-level，双路 wiki + raw） |
 | `oks ingest run <src>` | 摄入材料 → Raw Bundle |
 | `oks ingest prepare <src>` | 生成 ingest 协议骨架 |
 | `oks wiki create/list/get/pin/archive/use/export` | wiki 页管理 + OKF 导出 |
@@ -52,9 +52,9 @@ parent: 参考
 
 | backend | 说明 | 适用场景 |
 |---------|------|----------|
-| `native`（默认） | 6+1 因子 + jieba + IDF + title boost，实时遍历，无新依赖 | 小库（< 1000 页），新终端首次使用 |
+| `native` | 6+1 因子 + jieba + IDF + title boost，page-level，实时遍历 | 小库 / 无 SQLite / 历史复现（v0.6.0 前默认，R@1=0.525） |
 | `fts5` | SQLite FTS5 + BM25 + column weights + 持久化索引 + 增量 diff（CV from [TreeSearch](https://github.com/shibing624/TreeSearch) FTS5Index） | 大库（1000+ 页），持久化索引 |
-| `fusion` | native 主 top-3 + fts5 补盲 2（实验验证最优，R@5 +0.067） | 默认推荐，补 native 的关键词盲区 |
+| `fusion` | fts5 主召回 + native re-rank（0.7f+0.3n），R@1=0.805 | 实验位（低于纯 fts5 R@1=0.825，灵魂 re-rank 负优化） |
 | `<connector-name>` | 第三方包经 `entry_points(group="oks_search_backend")` 注册 | embedding / 代码搜索（ast_parser）/ 其他开源 search 框架 |
 
 **connector 扩展点**：第三方包写一个实现 `search()` + `index()` 的类，注册 entry_points，`oks recall --search-backend <name>` 即用，OKS 核心不改。这让 embedding 接入、代码检索等能力以 connector 方式自由扩展，而非硬塞进核心。

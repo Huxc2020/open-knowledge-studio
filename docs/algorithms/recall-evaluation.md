@@ -3,7 +3,7 @@ title: 召回评估
 nav_order: 3
 parent: 算法
 ---
-# 召回评估（三层次 + 三指标）
+# 召回评估（OKS Triple-Layer Recall 消融实验）
 
 `oks eval recall <dataset.yaml>` 支持离线评测召回质量。这一页讲评估方法论——三层次能力框架 + 三个量化指标——以及 OKS 当前的位置和阻塞。
 
@@ -41,29 +41,57 @@ OKS 定位在第一层 + 第二层基础：`oks recall` 是 Recall 原语，第�
 
 **阻塞**：OKS 无官方标注数据集——三指标要 query + 期望命中页，需人工标注。社区可自建（把常用 query + 该命中的 wiki 页标好）。在标注数据集就绪前，召回评分权重不盲调（P9 精神）——只能用 `--explain` 做定性检查。
 
-## v0.6.0 实测：50-case 三后端对比
+## v0.6.1 实测：OKS Triple-Layer Recall 消融实验
 
-v0.6.0 吸收 TreeSearch 的 markdown tree parser，把 `fts5` backend 从 **flat page-level** 升级为 **node-level**（每个 `##` heading 段一个 FTS5 row）。在 50 个语义改写 case（query 不含 slug 关键词，测试同义词/改写召回）上对比：
+v0.6.1 把三层架构（召回 fts5 node-level / 注入 Soul Boost / 衰减 Memory Curve）定名 **OKS Triple-Layer Recall**。在 50 个语义改写 case（query 不含 slug 关键词，测试同义词/改写召回，严格精确 slug 匹配）上做消融实验：
 
-| backend | P@3 | 说明 |
-|---------|------|------|
-| `native` (6+1) | 27/50 = **54%** | oks 原创（jieba + IDF + 6 因子 + memory curve + goal boost），语义召回弱——词不匹配就失效 |
-| **`fts5` (node-level)** | **48/50 = 96%** 🏆 | 吸收 TreeSearch 后；多词同段 BM25 高分，语义改写命中率高 |
-| `fusion` | 45/50 = **90%** | fts5 召回 + native 归一化 re-rank（0.7 fts5 + 0.3 native） |
+| backend | R@1 | R@3 | R@5 | MRR | nDCG@5 | p50 延迟 |
+|---------|------|------|------|------|---------|----------|
+| **fts5（完整 Triple-Layer）** | **0.825** | **0.925** | 0.927 | **0.907** | **0.893** | 93ms |
+| native（去 Node-BM25，回 page-level 6+1） | 0.525 | 0.647 | 0.689 | 0.630 | 0.624 | 137ms |
+| fusion（fts5 + native re-rank） | 0.805 | 0.905 | 0.927 | 0.900 | 0.887 | 226ms |
 
 ### 关键发现（数据驱动）
 
-1. **node-level > page-level**——同样 FTS5 + BM25，按 `##` heading 拆 node（多词同段高分）比整页平铺召回精度高 42pp（54%→96%）。
-2. **oks 灵魂与召回精度分层**——native 的 memory curve / goal boost / review bonus 在**召回层 re-rank 反而降精度**（不相关 page 高分挤掉精确命中，fusion 90% < fts5 96%）。结论：**oks 灵魂应在注入层 boost，不在召回层 re-rank**。
-3. **语义鸿沟仍在**——fts5 仍 miss 2 case："自进化知识平台"期望 `ai-native-strategy`，但该 wiki 正文不含"自进化""知识平台"——同义词鸿沟，需 embedding（connector 扩展点已就位）。
+1. **Node-BM25 全面碾压 native 6+1**——召回层从 page-level 手写 token overlap 换成 fts5 node-level BM25：R@1 +57%（0.525→0.825）、R@3 +43%（0.647→0.925）、MRR +44%（0.630→0.907）。多词同段 BM25 高分，语义改写召回精准。
+2. **fusion re-rank 反而降精度**——native 6+1 的 memory curve / goal boost / review bonus 在召回层 re-rank 拖累（R@1 0.825→0.805，MRR 0.907→0.900）。证实 **oks 灵魂应在注入层 boost，不在召回层 re-rank**——不相关 page 高分挤掉精确命中。
+3. **fts5 还更快**——93ms vs native 137ms vs fusion 226ms。SQLite 持久化索引比实时遍历快，fusion 因双路调用最慢。
+4. **R@5 三者接近**（0.689/0.927/0.927）——fts5 优势集中在 top-1/top-3 精准排序，top-5 宽网 native 也能捞到。
+
+### 三层消融拆解
+
+| 消融 | 去掉什么 | R@1 | MRR | 证明 |
+|------|---------|------|------|------|
+| 完整 Triple-Layer | — | 0.825 | 0.907 | baseline |
+| 去 Node-BM25 | 召回层 fts5→native 6+1 | 0.525 | 0.630 | Node-BM25 是精度主力（-36%） |
+| 去 Soul Boost（fusion re-rank 误用） | 灵魂因子搬回召回层 re-rank | 0.805 | 0.900 | 灵魂在注入层才对，召回层 re-rank 是负优化 |
+
+### embedding backend 对比（语义召回 connector 扩展）
+
+v0.6.2 加 embedding backend（oks-connector[embedding]，sentence-transformers
+本地 MiniLM，不调远程 API）。语义召回本应解决同义词鸿沟，实测却反直觉：
+
+| backend | R@1 | R@3 | R@5 | MRR | p50ms |
+|---------|------|------|------|------|-------|
+| **fts5（Node-BM25 字面）** | **0.825** | **0.925** | 0.927 | **0.907** | 93 |
+| embedding（语义 cosine） | 0.617 | 0.737 | 0.817 | 0.733 | 18304 |
+
+**为什么 embedding 反不如字面 BM25？**
+
+1. **中文术语重合高**——50-case 是语义改写但 query 与 wiki 用词高度重合（中文技术术语），BM25 字面已能命中，embedding 的语义泛化反而引入噪声（"自进化"→ auto-knowledge-distillation 而非 ai-native-strategy）。
+2. **R@5 接近**（0.817 vs 0.927）——embedding 宽网捞得到，但排序精度差。
+3. **慢 18304ms**——MiniLM CPU 每页 embed ~250ms，需 GPU 或 query embedding 缓存。
+
+**决策**：fts5 Node-BM25 仍是默认最优（R@1=0.825 + 93ms）。embedding 作语义鸿沟的 **fallback 补充**（fts5 miss 时走 embedding），不替代默认。语义召回的真正价值在大库 + 跨语言 + 同义词重的场景。
 
 ### 决策
 
-- 默认 `search_backend: fts5`（96% 最优召回）。
-- native (6+1) 保留为 oks 原创召回（page-level，无 SQLite 依赖，小库快速）。
-- fusion = fts5 主召回 + native 归一化 re-rank，limit<5 缩 native_top 给 fts5 留位。
+- 算法定名 **OKS Triple-Layer Recall = Node-BM25（召回）+ Soul Boost（注入）+ Memory Curve（衰减）**。
+- 默认 `search_backend: fts5`（R@1=82.5% 最优召回）。
+- native (6+1) 退为向后兼容召回（page-level，无 SQLite 依赖，`--search-backend native` 仍可跑）。
+- fusion 退为实验位（灵魂 re-rank 在召回层是负优化）。
 
-复现：`oks config set search_backend fts5` + `records/experiments/eval-50.yaml`。
+复现：`oks eval recall records/experiments/eval-50.yaml --output run.json --search-backend {fts5|native|fusion}`。run json 归档于 `records/experiments/runs/`。
 
 ## 评测驱动调权
 
@@ -74,4 +102,4 @@ v0.6.0 吸收 TreeSearch 的 markdown tree parser，把 `fts5` backend 从 **fla
 3. 看三指标变化——升则保留，降则回滚
 4. 逐因子迭代，每步只动一个
 
-不靠直觉调权重——6+1 因子互相耦合，盲调一处可能拖垮全局。
+不靠直觉调权重——Triple-Layer 三层互相耦合，盲调一处可能拖垮全局。v0.6.1 实测已证明：召回层加 native re-rank（看似"增强"）反而降 R@1 2.4pp。

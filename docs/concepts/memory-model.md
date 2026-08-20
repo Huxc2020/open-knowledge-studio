@@ -26,7 +26,7 @@ flowchart LR
 | User Memory | `profiles/users/{id}/profile.md` | 需 `--user {id}` | 无 | `user_id` |
 | Project Memory | `profiles/projects/{slug}.md` | 需 `--project {slug}` | 无 | `project_slug` |
 | Episodic Memory | `raw/{YYYY}/{MM}/{DD}/{source}/` | 关键词 + 新鲜度 | 无 | `source`、`date` |
-| Semantic Memory | `wiki/{domain}/{type}/` | 6+1 因子 + 曲线 | 类型 λ | `domain` |
+| Semantic Memory | `wiki/{domain}/{type}/` | fts5 node-level + 灵魂 boost + 曲线 | 类型 λ | `domain` |
 | Procedural Memory | Agent host 的 skills 目录 | 由 host 触发 | 无 | — |
 | Draft Memory | `drafts/{slug}.md` | N/A | 无 | N/A |
 

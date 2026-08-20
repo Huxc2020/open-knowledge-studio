@@ -1,0 +1,1344 @@
+{
+  "schema_version": "recall-eval-run/v1",
+  "generated_at": "2026-08-18T12:52:49.469449Z",
+  "manifest": {
+    "code_version": "0.5.14",
+    "kb_commit": "3373ddff9cfee4301285974b9c07f086f325cfe7",
+    "dataset_path": "/Users/xinhai/Desktop/school/repo/open-knowledge-studio/records/experiments/eval-50.yaml",
+    "dataset_sha256": "7c75f116cc17931bf7d99956b9d9e17bdd04c9d710ad4d6711ee1284aa7441ef",
+    "dataset_id": "artboy-50-v2",
+    "dataset_version": "2.0.0",
+    "limit": 5,
+    "goal_modes": [
+      "none"
+    ],
+    "kb_snapshot_before": "ca0c34a4f03d0c8cc37a8320efabfbe100751202802a46e91ba3e7b4a27d6a5e",
+    "kb_snapshot_after": "ca0c34a4f03d0c8cc37a8320efabfbe100751202802a46e91ba3e7b4a27d6a5e"
+  },
+  "metrics": {
+    "recall_at_1": 0.525,
+    "recall_at_3": 0.647,
+    "recall_at_5": 0.689,
+    "mrr": 0.63,
+    "ndcg_at_5": 0.62432,
+    "no_result": 0.0,
+    "stale_leakage": 0.0,
+    "latency_p50_ms": 136.855,
+    "latency_p95_ms": 164.826,
+    "case_count": 50
+  },
+  "cases": [
+    {
+      "case_id": "case-001",
+      "query": "怎么让 AI 跨会话记住用户偏好",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260813-itxaiohanglover-简历",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "20260720-pr-competition-and-review-participation",
+        "ai-native-strategy"
+      ],
+      "relevant": [
+        "20260813-ai-agent-记忆与知识库体系"
+      ],
+      "forbidden": [],
+      "latency_ms": 503.94,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-002",
+      "query": "换更强模型分数没涨瓶颈在哪",
+      "goal": "none",
+      "retrieved": [
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260813-itxaiohanglover-简历",
+        "20260818-多模态实时交互-理解-生成-交互三方面",
+        "loop-engineering",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化"
+      ],
+      "relevant": [
+        "20260818-agent-评估-评估对象是模型-harness-组合体"
+      ],
+      "forbidden": [],
+      "latency_ms": 139.037,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-003",
+      "query": "工具规模上百怎么让 agent 选对",
+      "goal": "none",
+      "retrieved": [
+        "20260818-agent-工具五类与设计原则",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260818-多-agent-协作-群体智能可高于个体",
+        "20260813-itxaiohanglover-简历",
+        "20260818-agent-llm-上下文-工具"
+      ],
+      "relevant": [
+        "20260818-agent-工具五类与设计原则"
+      ],
+      "forbidden": [],
+      "latency_ms": 139.112,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-004",
+      "query": "agent 怎么避免重复犯昨天的错误",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260720-phase",
+        "20260818-agent-工具五类与设计原则",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260813-itxaiohanglover-简历"
+      ],
+      "relevant": [
+        "20260818-agent-持续进化-保存经历-从经历中学习"
+      ],
+      "forbidden": [],
+      "latency_ms": 140.702,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.25,
+        "ndcg_at_5": 0.43067655807339306,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-005",
+      "query": "语音助手怎么实现自然打断对话",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "loop-engineering",
+        "20260818-多模态实时交互-理解-生成-交互三方面",
+        "20260717-nowledge-mem",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks"
+      ],
+      "relevant": [
+        "20260818-多模态实时交互-理解-生成-交互三方面"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.662,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg_at_5": 0.5,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-006",
+      "query": "预训练监督微调强化学习什么区别",
+      "goal": "none",
+      "retrieved": [
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260818-多模态实时交互-理解-生成-交互三方面",
+        "discuss-goal-learning-loop",
+        "20260720-pr-competition-and-review-participation"
+      ],
+      "relevant": [
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化"
+      ],
+      "forbidden": [],
+      "latency_ms": 137.947,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-007",
+      "query": "为什么通用 agent 必须会写代码",
+      "goal": "none",
+      "retrieved": [
+        "20260818-代码是通用-agent-的元能力",
+        "20260813-ai-agent-记忆与知识库体系",
+        "design-check",
+        "timing-strategy",
+        "20260818-agent-llm-上下文-工具"
+      ],
+      "relevant": [
+        "20260818-代码是通用-agent-的元能力"
+      ],
+      "forbidden": [],
+      "latency_ms": 139.175,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-008",
+      "query": "几个 agent 分工干活什么时候比单个强",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "timing-strategy",
+        "20260818-多-agent-协作-群体智能可高于个体",
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化"
+      ],
+      "relevant": [
+        "20260818-多-agent-协作-群体智能可高于个体"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.12,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg_at_5": 0.5,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-009",
+      "query": "给 AI 补充背景信息的系统性方法",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260813-itxaiohanglover-简历",
+        "loop-engineering",
+        "20260818-上下文工程-决定-agent-能力上限",
+        "figure-design"
+      ],
+      "relevant": [
+        "20260818-上下文工程-决定-agent-能力上限"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.18,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.25,
+        "ndcg_at_5": 0.43067655807339306,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-010",
+      "query": "agent 的本质组成是什么",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260818-agent-llm-上下文-工具",
+        "20260818-agent-工具五类与设计原则",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260818-agent-评估-评估对象是模型-harness-组合体"
+      ],
+      "relevant": [
+        "20260818-agent-llm-上下文-工具"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.442,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.5,
+        "ndcg_at_5": 0.6309297535714575,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-011",
+      "query": "开源贡献怎么挑容易 merge 的仓库",
+      "goal": "none",
+      "retrieved": [
+        "repo-selection",
+        "pr-merge-patterns",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "20260720-pr-competition-and-review-participation",
+        "20260716-triage-diff"
+      ],
+      "relevant": [
+        "repo-selection"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.871,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-012",
+      "query": "抢不到 PR 还能怎么参与",
+      "goal": "none",
+      "retrieved": [
+        "20260720-pr-competition-and-review-participation",
+        "20260813-itxaiohanglover-简历",
+        "20260813-ai-agent-记忆与知识库体系",
+        "worker-peer-review",
+        "artifact-verification"
+      ],
+      "relevant": [
+        "20260720-pr-competition-and-review-participation"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.276,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-013",
+      "query": "什么时机提交 PR 容易被 merge",
+      "goal": "none",
+      "retrieved": [
+        "repo-selection",
+        "timing-strategy",
+        "worker-peer-review",
+        "oss-competition-strategy",
+        "pr-merge-patterns"
+      ],
+      "relevant": [
+        "timing-strategy"
+      ],
+      "forbidden": [],
+      "latency_ms": 141.179,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.5,
+        "ndcg_at_5": 0.6309297535714575,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-014",
+      "query": "热门仓库小 diff 还有机会吗",
+      "goal": "none",
+      "retrieved": [
+        "20260716-triage-diff",
+        "20260720-pr-competition-and-review-participation",
+        "risk-spreading",
+        "20260813-itxaiohanglover-简历",
+        "20260717-nowledge-mem"
+      ],
+      "relevant": [
+        "20260716-triage-diff"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.616,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-015",
+      "query": "PR 审核要查哪些项",
+      "goal": "none",
+      "retrieved": [
+        "pr-review-protocol",
+        "20260720-pr-competition-and-review-participation",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260813-itxaiohanglover-简历",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks"
+      ],
+      "relevant": [
+        "pr-review-protocol"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.168,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-016",
+      "query": "多个项目怎么分散精力风险",
+      "goal": "none",
+      "retrieved": [
+        "risk-spreading",
+        "repo-selection",
+        "timing-strategy",
+        "oss-competition-strategy",
+        "20260813-itxaiohanglover-简历"
+      ],
+      "relevant": [
+        "risk-spreading"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.045,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-017",
+      "query": "怎么保持线性提交历史",
+      "goal": "none",
+      "retrieved": [
+        "20260720-git-rebase",
+        "oss-competition-strategy",
+        "20260813-itxaiohanglover-简历",
+        "20260717-nowledge-mem",
+        "20260818-上下文工程-决定-agent-能力上限"
+      ],
+      "relevant": [
+        "20260720-git-rebase"
+      ],
+      "forbidden": [],
+      "latency_ms": 136.356,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-018",
+      "query": "不开 phase 门控直跑会怎样",
+      "goal": "none",
+      "retrieved": [
+        "20260720-phase",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "loop-engineering",
+        "20260720-case",
+        "20260818-agent-持续进化-保存经历-从经历中学习"
+      ],
+      "relevant": [
+        "20260720-phase"
+      ],
+      "forbidden": [],
+      "latency_ms": 140.282,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-019",
+      "query": "CI 红了第一步做什么",
+      "goal": "none",
+      "retrieved": [
+        "20260716-triage-diff",
+        "ci-triage",
+        "repo-selection",
+        "timing-strategy",
+        "citation-system"
+      ],
+      "relevant": [
+        "ci-triage",
+        "reproducibility-checklist",
+        "peer-review-etiquette",
+        "citation-system",
+        "paper-structure",
+        "figure-design",
+        "decision-review",
+        "20260709-decision-review-test-goal",
+        "specialized-agent-toolsets",
+        "20260720-pr-competition-and-review-participation"
+      ],
+      "forbidden": [],
+      "latency_ms": 164.826,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.1,
+        "recall_at_5": 0.2,
+        "mrr": 0.5,
+        "ndcg_at_5": 0.34519134224686937,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-020",
+      "query": "把刷 PR 的流程拆成可复用调用链",
+      "goal": "none",
+      "retrieved": [
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "20260813-itxaiohanglover-简历",
+        "20260813-ai-agent-记忆与知识库体系",
+        "worker-peer-review",
+        "pr-review-protocol"
+      ],
+      "relevant": [
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "trace-call-chain"
+      ],
+      "forbidden": [],
+      "latency_ms": 182.61,
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 0.5,
+        "recall_at_5": 0.5,
+        "mrr": 1.0,
+        "ndcg_at_5": 0.6131471927654584,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-021",
+      "query": "跑完整测试前先验证什么",
+      "goal": "none",
+      "retrieved": [
+        "smoke-first",
+        "design-check",
+        "20260720-phase",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "worker-peer-review"
+      ],
+      "relevant": [
+        "smoke-first"
+      ],
+      "forbidden": [],
+      "latency_ms": 136.855,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-022",
+      "query": "改代码前先问什么问题",
+      "goal": "none",
+      "retrieved": [
+        "design-check",
+        "20260818-代码是通用-agent-的元能力",
+        "worker-peer-review",
+        "20260720-untitled",
+        "timing-strategy"
+      ],
+      "relevant": [
+        "design-check",
+        "figure-design",
+        "api-design",
+        "database-design"
+      ],
+      "forbidden": [],
+      "latency_ms": 134.875,
+      "metrics": {
+        "recall_at_1": 0.25,
+        "recall_at_3": 0.25,
+        "recall_at_5": 0.25,
+        "mrr": 1.0,
+        "ndcg_at_5": 0.3903800499921017,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-023",
+      "query": "读 test 文件理解设计意图",
+      "goal": "none",
+      "retrieved": [
+        "semantic-intent",
+        "design-check",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260709-decision-review-test-goal",
+        "20260720-phase"
+      ],
+      "relevant": [
+        "semantic-intent"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.266,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-024",
+      "query": "错误处理规范怎么写边界",
+      "goal": "none",
+      "retrieved": [
+        "20260720-phase",
+        "20260818-agent-工具五类与设计原则",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "git-branch-naming",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks"
+      ],
+      "relevant": [
+        "error-handling"
+      ],
+      "forbidden": [],
+      "latency_ms": 137.649,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-025",
+      "query": "测试知识库化是什么思路",
+      "goal": "none",
+      "retrieved": [
+        "20260720-untitled",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260813-itxaiohanglover-简历",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "worker-peer-review"
+      ],
+      "relevant": [
+        "20260720-untitled"
+      ],
+      "forbidden": [],
+      "latency_ms": 134.206,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-026",
+      "query": "并发模式有哪些锁和限流",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260720-phase",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "oss-competition-strategy",
+        "loop-engineering"
+      ],
+      "relevant": [
+        "concurrency-patterns"
+      ],
+      "forbidden": [],
+      "latency_ms": 135.638,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-027",
+      "query": "数据库 schema 和 migration 怎么设计",
+      "goal": "none",
+      "retrieved": [
+        "pr-review-protocol",
+        "20260818-agent-llm-上下文-工具",
+        "oss-competition-strategy",
+        "20260720-phase",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks"
+      ],
+      "relevant": [
+        "database-design"
+      ],
+      "forbidden": [],
+      "latency_ms": 135.559,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-028",
+      "query": "REST API 怎么设计幂等和版本",
+      "goal": "none",
+      "retrieved": [
+        "20260720-phase",
+        "design-check",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "20260818-上下文工程-决定-agent-能力上限",
+        "20260818-agent-工具五类与设计原则"
+      ],
+      "relevant": [
+        "api-design"
+      ],
+      "forbidden": [],
+      "latency_ms": 134.263,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-029",
+      "query": "日志怎么结构化分 level",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260818-多-agent-协作-群体智能可高于个体",
+        "paper-structure",
+        "discuss-goal-learning-loop",
+        "20260818-agent-持续进化-保存经历-从经历中学习"
+      ],
+      "relevant": [
+        "logging-standards"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.386,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-030",
+      "query": "组件拆分用容器还是展示",
+      "goal": "none",
+      "retrieved": [
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "loop-engineering",
+        "ci-triage",
+        "20260720-local-platform-css"
+      ],
+      "relevant": [
+        "component-architecture"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.035,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-031",
+      "query": "论文引用用 BibTeX 还是 DOI",
+      "goal": "none",
+      "retrieved": [
+        "citation-system",
+        "paper-structure",
+        "ci-triage",
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260818-上下文工程-决定-agent-能力上限"
+      ],
+      "relevant": [
+        "citation-system"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.444,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-032",
+      "query": "科研图表遵循什么原则",
+      "goal": "none",
+      "retrieved": [
+        "figure-design",
+        "20260818-agent-工具五类与设计原则",
+        "20260818-代码是通用-agent-的元能力",
+        "worker-peer-review",
+        "repo-selection"
+      ],
+      "relevant": [
+        "figure-design"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.707,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-033",
+      "query": "论文 IMRaD 结构是什么",
+      "goal": "none",
+      "retrieved": [
+        "paper-structure",
+        "20260813-ai-agent-记忆与知识库体系",
+        "citation-system",
+        "20260818-agent-llm-上下文-工具",
+        "20260818-agent-持续进化-保存经历-从经历中学习"
+      ],
+      "relevant": [
+        "paper-structure"
+      ],
+      "forbidden": [],
+      "latency_ms": 139.097,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-034",
+      "query": "写同行评议 review 的礼仪",
+      "goal": "none",
+      "retrieved": [
+        "20260709-decision-review-test-goal",
+        "worker-peer-review",
+        "20260813-itxaiohanglover-简历",
+        "20260720-pr-competition-and-review-participation",
+        "citation-system"
+      ],
+      "relevant": [
+        "peer-review-etiquette"
+      ],
+      "forbidden": [],
+      "latency_ms": 134.408,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-035",
+      "query": "实验怎么保证可复现",
+      "goal": "none",
+      "retrieved": [
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化",
+        "paper-structure"
+      ],
+      "relevant": [
+        "reproducibility-checklist"
+      ],
+      "forbidden": [],
+      "latency_ms": 136.837,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-036",
+      "query": "React 开发最佳实践",
+      "goal": "none",
+      "retrieved": [
+        "20260813-itxaiohanglover-简历",
+        "20260720-phase",
+        "20260818-agent-工具五类与设计原则",
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260818-上下文工程-决定-agent-能力上限"
+      ],
+      "relevant": [
+        "react-best-practices"
+      ],
+      "forbidden": [],
+      "latency_ms": 137.405,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-037",
+      "query": "状态放 local 还是 global",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "ci-triage",
+        "20260813-itxaiohanglover-简历",
+        "timing-strategy",
+        "process-boundary-state"
+      ],
+      "relevant": [
+        "state-management"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.355,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-038",
+      "query": "前端性能优化做哪些",
+      "goal": "none",
+      "retrieved": [
+        "20260813-itxaiohanglover-简历",
+        "20260818-agent-评估-评估对象是模型-harness-组合体",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化",
+        "20260818-上下文工程-决定-agent-能力上限"
+      ],
+      "relevant": [
+        "performance-optimization"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.836,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-039",
+      "query": "可访问性要达到什么等级",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260717-nowledge-mem",
+        "20260818-agent-llm-上下文-工具",
+        "repo-selection",
+        "timing-strategy"
+      ],
+      "relevant": [
+        "accessibility-rules"
+      ],
+      "forbidden": [],
+      "latency_ms": 138.957,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-040",
+      "query": "find 组件优先查哪一层",
+      "goal": "none",
+      "retrieved": [
+        "20260720-local-platform-css",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "oss-competition-strategy",
+        "ai-native-strategy",
+        "20260720-pr-competition-and-review-participation"
+      ],
+      "relevant": [
+        "20260720-local-platform-css"
+      ],
+      "forbidden": [],
+      "latency_ms": 131.528,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-041",
+      "query": "Anthropic 的循环工程方法论",
+      "goal": "none",
+      "retrieved": [
+        "loop-engineering",
+        "20260813-itxaiohanglover-简历",
+        "20260818-agent-llm-上下文-工具",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260818-上下文工程-决定-agent-能力上限"
+      ],
+      "relevant": [
+        "loop-engineering",
+        "discuss-goal-learning-loop"
+      ],
+      "forbidden": [],
+      "latency_ms": 134.883,
+      "metrics": {
+        "recall_at_1": 0.5,
+        "recall_at_3": 0.5,
+        "recall_at_5": 0.5,
+        "mrr": 1.0,
+        "ndcg_at_5": 0.6131471927654584,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-042",
+      "query": "自进化知识平台是什么策略",
+      "goal": "none",
+      "retrieved": [
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化",
+        "repo-selection",
+        "20260720-pr-competition-and-review-participation"
+      ],
+      "relevant": [
+        "ai-native-strategy"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.37,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 0.0,
+        "recall_at_5": 0.0,
+        "mrr": 0.0,
+        "ndcg_at_5": 0.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-043",
+      "query": "任务做完怎么自动沉淀经验",
+      "goal": "none",
+      "retrieved": [
+        "auto-knowledge-distillation",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260813-itxaiohanglover-简历",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks"
+      ],
+      "relevant": [
+        "auto-knowledge-distillation"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.575,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-044",
+      "query": "讨论执行学习的三阶段闭环",
+      "goal": "none",
+      "retrieved": [
+        "discuss-goal-learning-loop",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "oss-competition-strategy",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化"
+      ],
+      "relevant": [
+        "discuss-goal-learning-loop"
+      ],
+      "forbidden": [],
+      "latency_ms": 134.448,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-045",
+      "query": "阶段型目标用时间线追踪",
+      "goal": "none",
+      "retrieved": [
+        "timeline-view-goal-tracking",
+        "20260720-phase",
+        "20260813-ai-agent-记忆与知识库体系",
+        "discuss-goal-learning-loop",
+        "20260818-模型后训练三阶段-sft-记忆-rl-泛化"
+      ],
+      "relevant": [
+        "timeline-view-goal-tracking"
+      ],
+      "forbidden": [],
+      "latency_ms": 132.507,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-046",
+      "query": "worker 验证让另一个 worker 做",
+      "goal": "none",
+      "retrieved": [
+        "worker-peer-review",
+        "loop-engineering",
+        "daemon-remote-dispatch",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "ai-native-strategy"
+      ],
+      "relevant": [
+        "worker-peer-review"
+      ],
+      "forbidden": [],
+      "latency_ms": 133.217,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-047",
+      "query": "PR 大小和 merge 速度的关系",
+      "goal": "none",
+      "retrieved": [
+        "pr-merge-patterns",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260720-pr-competition-and-review-participation",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "oss-competition-strategy"
+      ],
+      "relevant": [
+        "pr-merge-patterns"
+      ],
+      "forbidden": [],
+      "latency_ms": 132.528,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-048",
+      "query": "专门化 agent 提升复杂任务",
+      "goal": "none",
+      "retrieved": [
+        "specialized-agent-toolsets",
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260818-agent-持续进化-保存经历-从经历中学习",
+        "20260818-agent-llm-上下文-工具",
+        "20260818-agent-评估-评估对象是模型-harness-组合体"
+      ],
+      "relevant": [
+        "specialized-agent-toolsets"
+      ],
+      "forbidden": [],
+      "latency_ms": 135.224,
+      "metrics": {
+        "recall_at_1": 1.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 1.0,
+        "ndcg_at_5": 1.0,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-049",
+      "query": "trace 调用链怎么记录",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "20260721-oss-contribution-call-chain-coding-plugin-gh-oks",
+        "trace-call-chain",
+        "20260818-agent-llm-上下文-工具",
+        "20260818-agent-工具五类与设计原则"
+      ],
+      "relevant": [
+        "trace-call-chain"
+      ],
+      "forbidden": [],
+      "latency_ms": 132.84,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.3333333333333333,
+        "ndcg_at_5": 0.5,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    },
+    {
+      "case_id": "case-050",
+      "query": "shared constants 怎么共享常量",
+      "goal": "none",
+      "retrieved": [
+        "20260813-ai-agent-记忆与知识库体系",
+        "shared-constants",
+        "README",
+        "oss-competition-strategy",
+        "process-boundary-state"
+      ],
+      "relevant": [
+        "shared-constants"
+      ],
+      "forbidden": [],
+      "latency_ms": 136.018,
+      "metrics": {
+        "recall_at_1": 0.0,
+        "recall_at_3": 1.0,
+        "recall_at_5": 1.0,
+        "mrr": 0.5,
+        "ndcg_at_5": 0.6309297535714575,
+        "no_result": 0.0,
+        "stale_leakage": 0.0
+      }
+    }
+  ]
+}

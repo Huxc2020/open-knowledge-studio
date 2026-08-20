@@ -1,3 +1,19 @@
+## [0.6.1] — 2026-08-18
+
+### oks 灵魂搬到 fts5 注入层
+
+用户关切: 改 fts5 默认后 6+1 的记忆遗忘机制还在吗?
+澄清: memory curve/decay/tier 在 store.py 独立系统, 不依附任何 backend, 照常跑.
+丢的只是 native 的召回算分（token_overlap/substring/topic_trace）, 被 fts5 BM25 node-level 取代.
+
+- **injection_boost**: type_boost + review_bonus + generic_demotion 搬到 fts5 注入层
+  score_components（anti-pattern ×1.5 > strategy ×0.8 > concept ×0.6 + review ×1.2 + 目录页 ×0.5）.
+  不改 fts5 召回顺序, 只作 boost 标注供 /query + eval 可见.
+- **简化**: 面向用户只留 fts5 一个常用 search（native/fusion 代码保留作历史 + 向后兼容）.
+- 三层 oks 灵魂: memory curve（store.py）+ goal boost（注入层重排）+ injection_boost（标注）.
+
+192 tests passed, fts5 P@3 仍 96%.
+
 ## [0.6.0] — 2026-08-18
 
 ### 召回引擎重构（吸收 TreeSearch node-level）
@@ -23,6 +39,68 @@
 - 50-case eval：native 54% / fts5 96% / fusion 90%
 
 # Changelog
+
+## [0.6.4] — 2026-08-18
+
+### embedding fallback 策略
+
+- `settings/recall.yaml` 加 `embedding_fallback: false`（默认关，embedding 慢 ~18s）
+- `_recall_knowledge_via_backend`: fts5 召回空/不足（<limit/2）+ 开启 + connector 可用时切 embedding 补充
+- except 静默回退原 fts5（不阻断召回）
+- 开启：`embedding_fallback: true` + `pip install 'oks-connector[embedding]'`
+
+### 代码清理（交付前 review）
+
+- `fusion.py` 删 dead code（return 后旧 native 主+fts5 补盲逻辑，永不执行）
+- `search/__init__.py` / `fusion.py` / `native.py` / `fts5.py` docstring 过时数据修正
+  （fusion R@1 0.667→0.805, native 默认→legacy, fts5 flat→node-level）
+- 删 `oks-connector-code` 重复包
+
+199 tests passed.
+
+
+## [0.6.3] — 2026-08-18
+
+### Codex lifecycle parity（PR #38 by Huxc2020）
+
+让 OKS Codex 集成与 Claude Code + Qoder 对等:
+- Codex UserPromptSubmit / PostToolUse hook wiring
+- 解析 Codex apply_patch 文件路径做 conflict detection
+- 返回 Codex-compatible JSON additionalContext
+- Wiki frontmatter 写入前校验
+- PreCompact snapshot 输出
+- 从 Git 仓库根解析 project-local hooks
+- idempotent install/status + /hooks trust guidance
+- +7 回归测试 (test_hooks.py, 192→199 passed)
+
+### eval 增强（v0.6.2 续）
+
+- oks eval recall --search-backend {fts5|native|fusion|embedding} 支持消融
+- records/experiments/runs/ 归档 4 个 run json
+
+
+## [0.6.2] — 2026-08-18
+
+### OKS Triple-Layer Recall 命名 + 50-case 真实消融实验
+
+定名 OKS Triple-Layer Recall = Node-BM25(召回) + Soul Boost(注入) + Memory Curve(衰减)。
+50-case 语义改写消融实验(严格精确 slug 匹配):
+- fts5(完整 Triple-Layer): R@1=0.825 R@3=0.925 MRR=0.907 nDCG@5=0.893 p50=93ms
+- native(去 Node-BM25, 6+1 page-level): R@1=0.525 R@3=0.647 MRR=0.630 nDCG@5=0.624
+- fusion(fts5+native rerank): R@1=0.805 R@3=0.905 MRR=0.900 nDCG@5=0.887
+关键发现: Node-BM25 R@1+57%; fusion re-rank 反降精度(灵魂须在注入层); fts5 还更快.
+
+3 个 eval bug 修复(之前 eval 一直测 native 不是 fts5!):
+1. recall_knowledge 调 _recall_knowledge_with_context(纯 native) → 改调 _recall_knowledge_via_backend(真 backend 分发)
+2. _recall_knowledge_via_backend search_backend=None 直接走 native → None 时读 settings/recall.yaml
+3. _kb_snapshot 把 .oks/fts5.db 算进 hash → 误报 'mutated state', 排除 .oks(索引是缓存)
+
+eval 增强: recall_knowledge + run_evaluation + eval_recall 全链加 search_backend 参数;
+  cli: oks eval recall --search-backend {fts5|native|fusion} 支持消融.
+
+docs: recall-engine/recall-evaluation/index/README/cli 11 处 P@3 虚高 96% → 真实 R@1=82.5%.
+records/experiments/runs/ 归档 3 个 run json.
+
 
 ## v0.5.14 (2026-08-17)
 

@@ -32,7 +32,7 @@ recall 默认只注入 L0+L1（wiki frontmatter + 正文）。`raw/`（L2）只�
 - **Agent write_file 友好**——Agent 在工作分支写 draft，人审后合入主库
 - **链接可达**——wikilink + frontmatter `relates_to` 做轻量图谱（A4 关系）
 
-代价：无向量检索（语义召回差）。倒排索引（BM25）由 fts5 backend 提供，native 用 IDF 加权 token。OKS 用 6+1 因子（token + 子串 + 图谱 + 类型 + review + 记忆 + goal）做规则评分补这个缺口。
+代价：无向量检索（语义召回差，需 embedding connector）。OKS 默认用 fts5 node-level BM25（吸收 TreeSearch markdown tree parser，消融 R@1=0.825）做召回，oks 灵魂（type/review/memory curve/goal）在注入层 boost 补这个缺口。
 
 ## 防孤岛：链接与索引
 
@@ -53,7 +53,7 @@ OKS 的 ingest Pre-flight（search-before-add）强制 Agent 在加新页前先 
 | 维度 | 向量库 RAG | OKS 文件系统范式 |
 |------|-----------|------------------|
 | 存储 | embedding + ANN 索引 | markdown + frontmatter + Git |
-| 检索 | 余弦相似度 | 6+1 因子规则评分 |
+| 检索 | 余弦相似度 | fts5 node-level BM25 + 注入层灵魂 boost |
 | 语义召回 | ✅ 强 | ❌ 弱（无 embedding） |
 | 可读 / 可审 | ❌ 黑盒 | ✅ 人可直接读 / 编辑 |
 | 版本控制 | 需额外方案 | ✅ Git 原生 |
