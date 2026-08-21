@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-08-21
+goal: 让 Agent 能通过稳定 URI 确定性浏览 OKS 上下文，同时保持 Raw→Draft→Wiki 治理门控不变
