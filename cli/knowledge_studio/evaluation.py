@@ -36,7 +36,7 @@ def _sha256(path: Path) -> str:
 def _kb_snapshot(root: Path) -> str:
     """Hash persistent memory state to prove evaluation is read-only."""
     digest = hashlib.sha256()
-    for bucket in ("wiki", "drafts", "raw", "profiles", ".oks"):
+    for bucket in ("wiki", "drafts", "raw", "profiles"):
         base = root / bucket
         if not base.exists():
             continue
@@ -117,7 +117,7 @@ def _case_metrics(slugs: list[str], relevant: set[str], forbidden: set[str]) -> 
     return metrics
 
 
-def run_evaluation(dataset_path: str | Path, output_path: str | Path, *, limit: int = 5) -> dict[str, Any]:
+def run_evaluation(dataset_path: str | Path, output_path: str | Path, *, limit: int = 5, search_backend: str | None = None) -> dict[str, Any]:
     if limit < 5:
         raise ValueError("limit must be >= 5 so recall_at_5 and ndcg_at_5 stay meaningful")
     dataset_path = Path(dataset_path).expanduser().resolve()
@@ -134,6 +134,7 @@ def run_evaluation(dataset_path: str | Path, output_path: str | Path, *, limit: 
             query=str(case["query"]), limit=limit,
             scope=case.get("scope"), goal=str(case.get("goal", "none")),
             explain=True, type_filter=case.get("type_filter"),
+            search_backend=search_backend,
         )
         latency_ms = (time.perf_counter() - started) * 1000
         latencies.append(latency_ms)

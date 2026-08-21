@@ -1,108 +1,219 @@
+schema_version: recall-case/v1
+dataset_id: artboy-50-v2
+version: 2.0.0
+description: 50-case 语义改写召回评测（artboy-knowledge, OKS Triple-Layer Recall v0.6.1+）
 cases:
-  # ── agent 类（10）──
-  - query: "怎么让 AI 跨会话记住用户偏好"
-    expect_slugs: ["ai-agent-记忆", "记忆与知识库"]
-  - query: "换更强模型分数没涨瓶颈在哪"
-    expect_slugs: ["agent-评估", "评估对象是模型"]
-  - query: "工具规模上百怎么让 agent 选对"
-    expect_slugs: ["agent-工具五类", "tool-design"]
-  - query: "agent 怎么避免重复犯昨天的错误"
-    expect_slugs: ["持续进化", "保存经历"]
-  - query: "语音助手怎么实现自然打断对话"
-    expect_slugs: ["多模态", "实时交互"]
-  - query: "预训练监督微调强化学习什么区别"
-    expect_slugs: ["模型后训练", "sft-记忆"]
-  - query: "为什么通用 agent 必须会写代码"
-    expect_slugs: ["代码是通用", "coding-agent"]
-  - query: "几个 agent 分工干活什么时候比单个强"
-    expect_slugs: ["多-agent-协作", "群体智能"]
-  - query: "给 AI 补充背景信息的系统性方法"
-    expect_slugs: ["上下文工程", "决定-agent-能力上限"]
-  - query: "agent 的本质组成是什么"
-    expect_slugs: ["agent-llm-上下文-工具", "llm-上下文"]
-  # ── oss 贡献类（10）──
-  - query: "开源贡献怎么挑容易 merge 的仓库"
-    expect_slugs: ["repo-selection", "repo"]
-  - query: "抢不到 PR 还能怎么参与"
-    expect_slugs: ["pr-competition", "review-participation"]
-  - query: "什么时机提交 PR 容易被 merge"
-    expect_slugs: ["timing-strategy", "timing"]
-  - query: "热门仓库小 diff 还有机会吗"
-    expect_slugs: ["triage-diff", "小-diff"]
-  - query: "PR 审核要查哪些项"
-    expect_slugs: ["pr-review-protocol", "pr-review"]
-  - query: "多个项目怎么分散精力风险"
-    expect_slugs: ["risk-spreading", "risk"]
-  - query: "怎么保持线性提交历史"
-    expect_slugs: ["git-rebase", "rebase"]
-  - query: "不开 phase 门控直跑会怎样"
-    expect_slugs: ["phase", "门控"]
-  - query: "CI 红了第一步做什么"
-    expect_slugs: ["ci-triage", "ci"]
-  - query: "把刷 PR 的流程拆成可复用调用链"
-    expect_slugs: ["oss-contribution-call-chain", "call-chain"]
-  # ── 工程实践类（10）──
-  - query: "跑完整测试前先验证什么"
-    expect_slugs: ["smoke-first", "smoke"]
-  - query: "改代码前先问什么问题"
-    expect_slugs: ["design-check", "design"]
-  - query: "读 test 文件理解设计意图"
-    expect_slugs: ["semantic-intent", "semantic"]
-  - query: "错误处理规范怎么写边界"
-    expect_slugs: ["error-handling", "错误处理"]
-  - query: "测试知识库化是什么思路"
-    expect_slugs: ["untitled", "测试知识"]
-  - query: "并发模式有哪些锁和限流"
-    expect_slugs: ["concurrency-patterns", "并发"]
-  - query: "数据库 schema 和 migration 怎么设计"
-    expect_slugs: ["database-design", "数据库"]
-  - query: "REST API 怎么设计幂等和版本"
-    expect_slugs: ["api-design", "api"]
-  - query: "日志怎么结构化分 level"
-    expect_slugs: ["logging-standards", "日志"]
-  - query: "组件拆分用容器还是展示"
-    expect_slugs: ["component-architecture", "组件"]
-  # ── 学术类（5）──
-  - query: "论文引用用 BibTeX 还是 DOI"
-    expect_slugs: ["citation-system", "citation"]
-  - query: "科研图表遵循什么原则"
-    expect_slugs: ["figure-design", "图表"]
-  - query: "论文 IMRaD 结构是什么"
-    expect_slugs: ["paper-structure", "imrad"]
-  - query: "写同行评议 review 的礼仪"
-    expect_slugs: ["peer-review-etiquette", "评议"]
-  - query: "实验怎么保证可复现"
-    expect_slugs: ["reproducibility-checklist", "可复现"]
-  # ── 前端类（5）──
-  - query: "React 开发最佳实践"
-    expect_slugs: ["react-best-practices", "react"]
-  - query: "状态放 local 还是 global"
-    expect_slugs: ["state-management", "状态管理"]
-  - query: "前端性能优化做哪些"
-    expect_slugs: ["performance-optimization", "性能优化"]
-  - query: "可访问性要达到什么等级"
-    expect_slugs: ["accessibility-rules", "可访问性"]
-  - query: "find 组件优先查哪一层"
-    expect_slugs: ["local-platform-css", "local-覆盖-platform"]
-  # ── 方法论类（5）──
-  - query: "Anthropic 的循环工程方法论"
-    expect_slugs: ["loop-engineering", "loop"]
-  - query: "自进化知识平台是什么策略"
-    expect_slugs: ["ai-native-strategy", "ai-native"]
-  - query: "任务做完怎么自动沉淀经验"
-    expect_slugs: ["auto-knowledge-distillation", "知识蒸馏"]
-  - query: "讨论执行学习的三阶段闭环"
-    expect_slugs: ["discuss-goal-learning-loop", "讨论-执行-学习"]
-  - query: "阶段型目标用时间线追踪"
-    expect_slugs: ["timeline-view", "时间线"]
-  # ── conventions 类（5）──
-  - query: "worker 验证让另一个 worker 做"
-    expect_slugs: ["worker-peer-review", "worker"]
-  - query: "PR 大小和 merge 速度的关系"
-    expect_slugs: ["pr-merge-patterns", "merge-pattern"]
-  - query: "专门化 agent 提升复杂任务"
-    expect_slugs: ["specialized-agent-toolsets", "专门化"]
-  - query: "trace 调用链怎么记录"
-    expect_slugs: ["trace-call-chain", "trace"]
-  - query: "shared constants 怎么共享常量"
-    expect_slugs: ["shared-constants", "constants"]
+- case_id: case-001
+  query: 怎么让 AI 跨会话记住用户偏好
+  relevant:
+  - 20260813-ai-agent-记忆与知识库体系
+- case_id: case-002
+  query: 换更强模型分数没涨瓶颈在哪
+  relevant:
+  - 20260818-agent-评估-评估对象是模型-harness-组合体
+- case_id: case-003
+  query: 工具规模上百怎么让 agent 选对
+  relevant:
+  - 20260818-agent-工具五类与设计原则
+- case_id: case-004
+  query: agent 怎么避免重复犯昨天的错误
+  relevant:
+  - 20260818-agent-持续进化-保存经历-从经历中学习
+- case_id: case-005
+  query: 语音助手怎么实现自然打断对话
+  relevant:
+  - 20260818-多模态实时交互-理解-生成-交互三方面
+- case_id: case-006
+  query: 预训练监督微调强化学习什么区别
+  relevant:
+  - 20260818-模型后训练三阶段-sft-记忆-rl-泛化
+- case_id: case-007
+  query: 为什么通用 agent 必须会写代码
+  relevant:
+  - 20260818-代码是通用-agent-的元能力
+- case_id: case-008
+  query: 几个 agent 分工干活什么时候比单个强
+  relevant:
+  - 20260818-多-agent-协作-群体智能可高于个体
+- case_id: case-009
+  query: 给 AI 补充背景信息的系统性方法
+  relevant:
+  - 20260818-上下文工程-决定-agent-能力上限
+- case_id: case-010
+  query: agent 的本质组成是什么
+  relevant:
+  - 20260818-agent-llm-上下文-工具
+- case_id: case-011
+  query: 开源贡献怎么挑容易 merge 的仓库
+  relevant:
+  - repo-selection
+- case_id: case-012
+  query: 抢不到 PR 还能怎么参与
+  relevant:
+  - 20260720-pr-competition-and-review-participation
+- case_id: case-013
+  query: 什么时机提交 PR 容易被 merge
+  relevant:
+  - timing-strategy
+- case_id: case-014
+  query: 热门仓库小 diff 还有机会吗
+  relevant:
+  - 20260716-triage-diff
+- case_id: case-015
+  query: PR 审核要查哪些项
+  relevant:
+  - pr-review-protocol
+- case_id: case-016
+  query: 多个项目怎么分散精力风险
+  relevant:
+  - risk-spreading
+- case_id: case-017
+  query: 怎么保持线性提交历史
+  relevant:
+  - 20260720-git-rebase
+- case_id: case-018
+  query: 不开 phase 门控直跑会怎样
+  relevant:
+  - 20260720-phase
+- case_id: case-019
+  query: CI 红了第一步做什么
+  relevant:
+  - ci-triage
+  - reproducibility-checklist
+  - peer-review-etiquette
+  - citation-system
+  - paper-structure
+  - figure-design
+  - decision-review
+  - 20260709-decision-review-test-goal
+  - specialized-agent-toolsets
+  - 20260720-pr-competition-and-review-participation
+- case_id: case-020
+  query: 把刷 PR 的流程拆成可复用调用链
+  relevant:
+  - 20260721-oss-contribution-call-chain-coding-plugin-gh-oks
+  - trace-call-chain
+- case_id: case-021
+  query: 跑完整测试前先验证什么
+  relevant:
+  - smoke-first
+- case_id: case-022
+  query: 改代码前先问什么问题
+  relevant:
+  - design-check
+  - figure-design
+  - api-design
+  - database-design
+- case_id: case-023
+  query: 读 test 文件理解设计意图
+  relevant:
+  - semantic-intent
+- case_id: case-024
+  query: 错误处理规范怎么写边界
+  relevant:
+  - error-handling
+- case_id: case-025
+  query: 测试知识库化是什么思路
+  relevant:
+  - 20260720-untitled
+- case_id: case-026
+  query: 并发模式有哪些锁和限流
+  relevant:
+  - concurrency-patterns
+- case_id: case-027
+  query: 数据库 schema 和 migration 怎么设计
+  relevant:
+  - database-design
+- case_id: case-028
+  query: REST API 怎么设计幂等和版本
+  relevant:
+  - api-design
+- case_id: case-029
+  query: 日志怎么结构化分 level
+  relevant:
+  - logging-standards
+- case_id: case-030
+  query: 组件拆分用容器还是展示
+  relevant:
+  - component-architecture
+- case_id: case-031
+  query: 论文引用用 BibTeX 还是 DOI
+  relevant:
+  - citation-system
+- case_id: case-032
+  query: 科研图表遵循什么原则
+  relevant:
+  - figure-design
+- case_id: case-033
+  query: 论文 IMRaD 结构是什么
+  relevant:
+  - paper-structure
+- case_id: case-034
+  query: 写同行评议 review 的礼仪
+  relevant:
+  - peer-review-etiquette
+- case_id: case-035
+  query: 实验怎么保证可复现
+  relevant:
+  - reproducibility-checklist
+- case_id: case-036
+  query: React 开发最佳实践
+  relevant:
+  - react-best-practices
+- case_id: case-037
+  query: 状态放 local 还是 global
+  relevant:
+  - state-management
+- case_id: case-038
+  query: 前端性能优化做哪些
+  relevant:
+  - performance-optimization
+- case_id: case-039
+  query: 可访问性要达到什么等级
+  relevant:
+  - accessibility-rules
+- case_id: case-040
+  query: find 组件优先查哪一层
+  relevant:
+  - 20260720-local-platform-css
+- case_id: case-041
+  query: Anthropic 的循环工程方法论
+  relevant:
+  - loop-engineering
+  - discuss-goal-learning-loop
+- case_id: case-042
+  query: 自进化知识平台是什么策略
+  relevant:
+  - ai-native-strategy
+- case_id: case-043
+  query: 任务做完怎么自动沉淀经验
+  relevant:
+  - auto-knowledge-distillation
+- case_id: case-044
+  query: 讨论执行学习的三阶段闭环
+  relevant:
+  - discuss-goal-learning-loop
+- case_id: case-045
+  query: 阶段型目标用时间线追踪
+  relevant:
+  - timeline-view-goal-tracking
+- case_id: case-046
+  query: worker 验证让另一个 worker 做
+  relevant:
+  - worker-peer-review
+- case_id: case-047
+  query: PR 大小和 merge 速度的关系
+  relevant:
+  - pr-merge-patterns
+- case_id: case-048
+  query: 专门化 agent 提升复杂任务
+  relevant:
+  - specialized-agent-toolsets
+- case_id: case-049
+  query: trace 调用链怎么记录
+  relevant:
+  - trace-call-chain
+- case_id: case-050
+  query: shared constants 怎么共享常量
+  relevant:
+  - shared-constants

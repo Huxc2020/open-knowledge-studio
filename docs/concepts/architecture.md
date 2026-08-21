@@ -115,7 +115,7 @@ Q["query<br/><small>用户 prompt / 工具操作</small>"]:::recall
 
 REG["registry<br/><small>scope / goal<br/>agent_id + cwd</small>"]:::recall
 
-SCORE["6+1 因子评分<br/><small>overlap · substring · topic<br/>type · review · curve · goal</small>"]:::recall
+SCORE["fts5 node-level 召回<br/><small>BM25 · oks 灵魂 boost · memory curve · goal</small>"]:::recall
 
 SEARCH["search backend<br/><small>native · fts5 · fusion</small>"]:::recall
 
@@ -181,7 +181,7 @@ WIKI -.-> TRUST
 - **摄入 fail-closed**：Schema + provenance + SHA-256 校验，证据不足即拒；raw ≠ memory，材料≠正式知识。
 - **7 桶**：profiles / raw / wiki / drafts / mail（5 认知）+ settings / _meta（2 基础设施）；`mail` 是协调桶，不是知识桶。
 - **只读 VFS 访问层**：`oks://` 在不改变物理布局和七桶治理的前提下，公开 `profiles`、`raw`、`wiki`、`drafts`、`mail`、`skills`、`traces` 七个只读 scope。这里的七个 scope 是访问视图，不是新的“七桶”：`skills` 映射 `.agents/skills/`，`traces` 是 `raw/executions/` 的唯一公开地址；`settings`、`_meta`、`.oks` 不公开。`oks fs` 只有 `ls/tree/stat/read/overview/find`，没有通用写入、移动或删除能力。
-- **召回**：6+1 因子 + 可插拔 backend（native / fts5 / fusion），floor + cooldown 过滤去重后注入 `<recalled-memory>`。
+- **召回**：fts5 node-level（默认）+ 可插拔 backend（native / fts5 / fusion / connector），floor + cooldown 过滤去重后注入 `<recalled-memory>`。
 - **Hooks（可选注入）**：UserPromptSubmit（用户 prompt → recall 注入）+ PostToolUse（recall 补位 + 文件冲突检测），`oks hook install` 显式安装。
 - **信任语义**：`[verified]` 只来自 trace 证据或 `human_reviewed_at`，绝不来自使用次数。
 - **飞书**：可选参考集成（`examples/oh-my-feishu/`），提供手机表单采集 + IM 审核的替代前端，不随 `oks` CLI 分发。

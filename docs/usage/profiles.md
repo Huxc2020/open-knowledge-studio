@@ -24,7 +24,7 @@ profile 和 goals；`oks recall` 不检索该文件。可以使用
 | 注入时机 | 由 Agent host 或 Skill 决定；不是所有 Profile 每轮自动注入 |
 | 写入者 | 人 / Agent（经确认） |
 
-对比 `wiki/`（语义记忆，6+1 因子召回 + 衰减）与 `raw/`（情节记忆，关键词 +
+对比 `wiki/`（语义记忆，fts5 node-level 召回 + 衰减）与 `raw/`（情节记忆，关键词 +
 新鲜度）：Profiles 不参与相关性竞争，它是"底座"而非"检索目标"。
 
 ## 目录结构

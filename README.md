@@ -70,11 +70,47 @@ the separately packaged `oks-connector` runtime.
 - Evidence and execution states remain traceable, including `partial`,
   `failed`, `skipped`, and `environment_limited`.
 
+### Recall Architecture — OKS Triple-Layer Recall
+
+Recall and injection are decoupled across three layers:
+
+- **Node-BM25** (retrieval) — fts5 node-level BM25 (one FTS5 row per `##`
+  heading, multi-word same-section scores high). 50-case ablation: R@1=82.5%,
+  MRR=0.907 (vs native 6+1 R@1=52.5%).
+- **Soul Boost** (injection) — goal re-rank + `injection_boost` annotation
+  (type×1.5/0.8/0.6 + review×1.2 + generic×0.5). Does not change retrieval
+  order; visible in `--explain`.
+- **Memory Curve** (decay) — type-specific λ → tier `hot/warm/cold/evictable`,
+  an independent subsystem in `store.py`.
+
+Ablation proves the layering: adding native 6+1 re-rank back into retrieval
+(fusion) *lowers* R@1 0.825→0.805 — the "soul" belongs in the injection layer,
+not the retrieval layer.
+
+#### 50-case ablation (semantic-paraphrase queries, strict exact-slug match)
+
+| backend | R@1 | R@3 | R@5 | MRR | nDCG@5 | p50 |
+|---------|------|------|------|------|---------|------|
+| **fts5 (full Triple-Layer)** | **0.825** | **0.925** | 0.927 | **0.907** | **0.893** | 93ms |
+| native (−Node-BM25, 6+1 page-level) | 0.525 | 0.647 | 0.689 | 0.630 | 0.624 | 137ms |
+| fusion (fts5 + native re-rank) | 0.805 | 0.905 | 0.927 | 0.900 | 0.887 | 226ms |
+
+Node-BM25 lifts R@1 +57% over native; fusion re-rank *lowers* precision — the
+soul factors must live in the injection layer, never in retrieval. Runs archived
+in `records/experiments/runs/`. Reproduce:
+`oks eval recall records/experiments/eval-50.yaml -o run.json --search-backend fts5`.
+
+See [Recall Evaluation](docs/algorithms/recall-evaluation.md).
+
 ### Learn More
 
+- [Real-world examples](examples/) — copyable scenarios: learning, books, Feishu, GitHub, maintenance, resume
 - [Start here](docs/start-here.md)
 - [Complete your first knowledge loop](docs/first-knowledge-loop.md)
 - [Verify that OKS works](docs/verify.md)
+
+*Advanced:*
+
 - [Architecture principles](docs/concepts/constitution.md)
 - [Ingest boundaries](docs/reference/ingest.md)
 
@@ -125,6 +161,31 @@ oks ingest prepare <文件或URL>
 托管采集时，使用 `oks ingest run <文件或URL>`；这条兼容路径把提取交给独立发布的
 `oks-connector`。
 
+### 召回架构 — OKS Triple-Layer Recall
+
+召回与注入解耦，三层架构：
+
+- **Node-BM25**（召回层）—— fts5 node-level BM25（每个 `##` heading 段一个 FTS5
+  row，多词同段高分）。50-case 消融：R@1=82.5%，MRR=0.907（vs native 6+1 R@1=52.5%）。
+- **Soul Boost**（注入层）—— goal 重排 + `injection_boost` 标注
+  （type×1.5/0.8/0.6 + review×1.2 + generic×0.5）。不改召回顺序，`--explain` 可见。
+- **Memory Curve**（衰减层）—— type-specific λ → tier `hot/warm/cold/evictable`，
+  `store.py` 独立子系统。
+
+#### 50-case 消融实验（语义改写 query，严格精确 slug 匹配）
+
+| backend | R@1 | R@3 | R@5 | MRR | nDCG@5 | p50 |
+|---------|------|------|------|------|---------|------|
+| **fts5（完整 Triple-Layer）** | **0.825** | **0.925** | 0.927 | **0.907** | **0.893** | 93ms |
+| native（去 Node-BM25，6+1 page-level） | 0.525 | 0.647 | 0.689 | 0.630 | 0.624 | 137ms |
+| fusion（fts5 + native re-rank） | 0.805 | 0.905 | 0.927 | 0.900 | 0.887 | 226ms |
+
+Node-BM25 R@1 较 native +57%；fusion re-rank 反而*降*精度——灵魂因子必须留在注入层，
+不能放召回层。run json 归档 `records/experiments/runs/`。复现：
+`oks eval recall records/experiments/eval-50.yaml -o run.json --search-backend fts5`。
+
+详见 [召回评估](docs/algorithms/recall-evaluation.md)。
+
 ### 产品边界
 
 - Core 负责文件协议、校验、人工审核和 Recall，不调用 AI API。
@@ -135,9 +196,13 @@ oks ingest prepare <文件或URL>
 
 ### 继续阅读
 
+- [真实案例](examples/) — 可复制的场景：学习、书籍、飞书、GitHub、维护、简历
 - [从这里开始](docs/start-here.md)
 - [完成第一个知识闭环](docs/first-knowledge-loop.md)
 - [确认 OKS 正在工作](docs/verify.md)
+
+*进阶内容：*
+
 - [架构原则](docs/concepts/constitution.md)
 - [摄入边界](docs/reference/ingest.md)
 

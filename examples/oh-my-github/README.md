@@ -135,5 +135,5 @@ PR 不是终点。配方 `profiles/recipes/oss-pr-monitor.md` 每 2 天查一次
 
 ## 接下来读哪里
 
-* **[托管你的研究](../oh-my-research/README.md)**：论文与实验的沉淀方式。
+* **[托管你的学习](../oh-my-research/README.md)**：把看过的文章、课程、书，变成随时能想起来的知识。
 * **[召回引擎](../../docs/algorithms/recall-engine.md)**：为什么失败经验会被优先召回。

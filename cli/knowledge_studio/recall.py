@@ -134,6 +134,8 @@ def load_recall_params(root=None):
         "posttool_floor": 0.9, "posttool_topn": 2, "posttool_mode": "signal",
         "posttool_recall": 1, "posttool_signal_rel_floor": 2.5,
         "conflict_window": 300, "search_backend": "native", "mail_topn": 3,
+        # v0.6.3: embedding fallback — fts5 召回空/明显不足时切 embedding 补充
+        "embedding_fallback": False,
         # v0.6.0: inject token budget (CV from karpathy-wiki L0-L3)
         "inject_budget_chars": 4000, "inject_per_page_chars": 200,
         "inject_title_only_floor": 0.5,
@@ -162,6 +164,7 @@ def load_recall_params(root=None):
             params["conflict_window"] = int(cc.get("window", params["conflict_window"]))
             params["search_backend"] = str(data.get("search_backend", params["search_backend"]))
             params["mail_topn"] = int(data.get("mail_topn", params["mail_topn"]))
+            params["embedding_fallback"] = bool(data.get("embedding_fallback", params["embedding_fallback"]))
             # v0.6.0: inject budget
             ic = data.get("inject", {}) or {}
             params["inject_budget_chars"] = int(ic.get("budget_chars", params["inject_budget_chars"]))
@@ -459,6 +462,7 @@ def recall_knowledge(
     goal: str | None = None,
     explain: bool = False,
     type_filter: str | None = None,
+    search_backend: str | None = None,
 ) -> list[dict[str, Any]]:
     """Find wiki pages relevant to the query via 6+1-factor scoring.
 
@@ -475,7 +479,7 @@ def recall_knowledge(
     type_filter: optional wiki type filter applied before ranking and limit.
     """
     goal_context = _resolve_goal_context(goal, goal_boost=goal_boost)
-    return _recall_knowledge_with_context(
+    return _recall_knowledge_via_backend(
         query=query,
         topic_id=topic_id,
         limit=limit,
@@ -483,6 +487,7 @@ def recall_knowledge(
         goal_context=goal_context,
         explain=explain,
         type_filter=type_filter,
+        search_backend=search_backend,
     )
 
 
@@ -509,7 +514,12 @@ def _recall_knowledge_via_backend(
     # fts5 → SQLite FTS5 + BM25 (CV from TreeSearch, flat page-level).
     # fusion → native top-3 + fts5 supplement-2 (default for best of both).
     if not search_backend or search_backend in ("native", "legacy"):
-        return _recall_knowledge_with_context(
+        # v0.6.1: backend None 时读 settings/recall.yaml（CLI recall() 同逻辑）
+        # 之前 None 直接走 native，导致 eval 测不到 fts5/fusion
+        if not search_backend:
+            search_backend = load_recall_params().get("search_backend", "native")
+        if search_backend in ("native", "legacy"):
+            return _recall_knowledge_with_context(
             query=query,
             topic_id=topic_id,
             limit=limit,
@@ -528,6 +538,24 @@ def _recall_knowledge_via_backend(
     if goal_context.get("mode") != "none" and requested not in ("active", "none"):
         backend_kwargs["goal"] = requested
     hits = backend.search(query, limit=limit, scope=scope, **backend_kwargs)
+
+    # v0.6.3: embedding fallback — fts5/native 召回空或明显不足时，
+    # 且 embedding_fallback 开启 + embedding connector 可用，切语义召回补充。
+    # 默认关闭（embedding 慢 ~18s/50query，一般场景不需要）。
+    # 触发条件：hits 空 或 召回数 < limit/2（明显召回不足）。
+    if (
+        len(hits) < max(1, (limit + 1) // 2)
+        and search_backend != "embedding"
+        and load_recall_params().get("embedding_fallback", False)
+    ):
+        try:
+            emb_backend = get_backend("embedding", root=repo_root())
+            emb_hits = emb_backend.search(query, limit=limit, scope=scope, **backend_kwargs)
+            hits = emb_hits or hits  # embedding 补充；空则保留原 fts5 结果
+        except Exception:
+            # embedding connector 未装或失败 → 静默回退原 fts5 结果（不阻断召回）
+            pass
+
 
     # v0.6.0: goal boost 在注入层——fts5 召回 top-N 后，goal 命中的 slug
     # 往前排（不改召回分数，只改注入顺序）。这是 oks 灵魂与召回精度分层
@@ -586,6 +614,10 @@ def _recall_knowledge_via_backend(
             "score_components": {
                 "fts5_score": round(h.score, 3),
                 "backend": h.backend,
+                # v0.6.0: oks 灵魂在注入层——type_boost + review_bonus +
+                # generic_demotion（CV from native 6+1 的灵魂因子）。
+                # 不改 fts5 召回顺序，只作为注入层 boost 标注，供 /query + eval 可见。
+                "injection_boost": round(_injection_boost(p, h), 3),
                 **({"node": h.extra.get("best_node")} if h.extra.get("best_node") else {}),
             },
         }
@@ -785,6 +817,29 @@ def is_generic_page(title: str) -> bool:
     if not title:
         return False
     return title.strip().lower() in _GENERIC_PAGE_TITLES
+
+
+# v0.6.0: oks 灵魂在注入层——把 native 6+1 的 type_boost + review_bonus +
+# generic_demotion 搬到 fts5 注入层。不改召回顺序，只作为 boost 标注。
+_INJECT_TYPE_BOOST = {"anti-pattern": 1.5, "strategy": 0.8, "concept": 0.6}
+
+
+def _injection_boost(page: dict, hit) -> float:
+    """注入层灵魂 boost（CV from native 6+1 的非召回因子）。
+
+    type_boost（anti-pattern ×1.5 > strategy ×0.8 > concept ×0.6）+
+    review_bonus（有 human review lesson ×1.2）+ generic_demotion（目录页 ×0.5）。
+    与 memory curve（store.py 独立算的 page score）叠加——召回用 fts5 BM25，
+    注入用 oks 灵魂。返回乘数（1.0 基准）。
+    """
+    wiki_type = str(page.get("type", page.get("category", "concept")))
+    boost = _INJECT_TYPE_BOOST.get(wiki_type, 0.5)
+    review = page.get("review") or {}
+    if review.get("lesson"):
+        boost *= 1.2  # 有人类审核教训的 page 注入优先
+    if is_generic_page(page.get("title", "")):
+        boost *= 0.5  # 目录页降权
+    return round(boost, 3)
 
 
 def _compute_relevance(

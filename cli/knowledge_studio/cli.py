@@ -795,12 +795,13 @@ def eval_recall(
     dataset: Path = typer.Argument(help="YAML recall dataset"),
     output: Path = typer.Option(..., "--output", "-o", help="Output run JSON"),
     limit: int = typer.Option(5, "--limit", "-n", min=5, help="Retrieved items per case (>=5 keeps recall@5 meaningful)"),
+    search_backend: Optional[str] = typer.Option(None, "--search-backend", help="Override recall.yaml (fts5/native/fusion) for ablation"),
 ):
     """Run a deterministic, read-only recall evaluation."""
     from knowledge_studio.evaluation import run_evaluation
 
     try:
-        result = run_evaluation(dataset, output, limit=limit)
+        result = run_evaluation(dataset, output, limit=limit, search_backend=search_backend)
     except (OSError, ValueError, RuntimeError) as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)

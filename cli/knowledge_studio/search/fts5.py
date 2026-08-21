@@ -1,10 +1,13 @@
-"""FTS5 backend — CV from TreeSearch (shibing624) FTS5Index, flat version.
+"""FTS5 backend — CV from TreeSearch (shibing624) FTS5Index, node-level version.
 
-SQLite FTS5 + jieba 中文分词 + BM25 + column weights + 增量 diff。
-大数据场景（1000+ wiki）比 native 遍历快，持久化索引。
+SQLite FTS5 + jieba 中文分词 + node-level BM25 + column weights + 增量 diff。
+每 `##` heading 段一 FTS5 row，slug 聚合多 node 命中。持久化索引。
+
+v0.6.0 升级: flat page → node-level（每 ## 段一 row），50-case R@1
+0.525(native) → 0.825(node-level)。v0.6.0+ 默认 search backend。
 
 CV source: github.com/shibing624/TreeSearch treesearch/fts.py
-Adapted: tree-node → flat page (slug → title/body/tags/code_blocks).
+Adapted: tree-node → markdown-node（## heading 切分, column weights).
 
 为何 CV（用户决策）：
 - 不假设数据少——大数据下 native 每次遍历 wiki + 实时算 IDF/title 越来越慢，

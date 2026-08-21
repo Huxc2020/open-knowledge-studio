@@ -339,7 +339,7 @@ token overlap 无 IDF/语义判别，会误命中 token 重叠但不相关的页
 不想装 hook，手动调：
 
 ```bash
-oks recall "<query>"               # 6+1 因子召回 wiki/ + raw/
+oks recall "<query>"               # fts5 node-level 召回 wiki/ + raw/
 oks recall "<query>" --explain     # 看评分细节
 oks recall "<query>" --knowledge-only  # 只 wiki/，跳过 raw/
 ```
