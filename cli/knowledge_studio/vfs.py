@@ -65,10 +65,10 @@ class OksUri:
         if scope not in MOUNTS:
             raise VfsError("UNSUPPORTED_SCOPE", f"Unsupported OKS scope: {scope}")
         path_body = parsed.path[1:] if parsed.path.startswith("/") else parsed.path
+        if "//" in parsed.path:
+            raise VfsError("INVALID_URI", "Empty URI path segments are not allowed")
         if path_body.endswith("/"):
             path_body = path_body[:-1]
-        if "//" in path_body:
-            raise VfsError("INVALID_URI", "Empty URI path segments are not allowed")
         raw_parts = tuple(path_body.split("/")) if path_body else ()
         decoded: list[str] = []
         for raw_part in raw_parts:
@@ -139,16 +139,34 @@ class VfsResolver:
         if not candidate.is_absolute():
             candidate = self.root / candidate
         candidate = candidate.absolute()
+        try:
+            raw_relative = candidate.relative_to(self.root.absolute())
+        except ValueError:
+            raw_relative = None
+        if raw_relative is not None:
+            for part in raw_relative.parts:
+                if part in {"", ".", ".."} or "\x00" in part or "\\" in part:
+                    raise VfsError(
+                        "PATH_NOT_EXPOSED", "Physical path contains unsafe segments"
+                    )
+            self._reject_symlinks(self.root, raw_relative.parts)
+
+        candidate = candidate.resolve(strict=False)
         ordered = [MOUNTS["traces"]] + [
             mount for scope, mount in MOUNTS.items() if scope != "traces"
         ]
         for mount in ordered:
-            mount_root = self.root.joinpath(*mount.relative_root).absolute()
+            mount_root = self.root.joinpath(*mount.relative_root).resolve(strict=False)
             try:
                 relative = candidate.relative_to(mount_root)
             except ValueError:
                 continue
             parts = relative.parts
+            if any(
+                part in {"", ".", ".."} or "\x00" in part or "\\" in part
+                for part in parts
+            ):
+                raise VfsError("PATH_NOT_EXPOSED", "Physical path contains unsafe segments")
             if any(parts[: len(prefix)] == prefix for prefix in mount.excluded_prefixes):
                 continue
             self._reject_symlinks(self.root, mount.relative_root + parts)

@@ -48,6 +48,7 @@ def test_parse_and_render_canonical_uri(vfs_root):
         ("oks://wiki/a%5Cb.md", "INVALID_URI"),
         ("oks://wiki/a.md?raw=1", "INVALID_URI"),
         ("oks://wiki/a.md#section", "INVALID_URI"),
+        ("oks://wiki//", "INVALID_URI"),
     ],
 )
 def test_invalid_uri_is_rejected(uri, code):
@@ -90,3 +91,18 @@ def test_any_symlink_component_is_rejected(vfs_root):
     with pytest.raises(VfsError) as exc:
         VfsResolver(vfs_root).resolve("oks://wiki/link.md")
     assert exc.value.code == "SYMLINK_NOT_ALLOWED"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        Path("wiki") / ".." / "settings" / "recall.yaml",
+        Path("wiki") / "unsafe\\name.md",
+    ],
+)
+def test_uri_for_path_rejects_noncanonical_or_unsafe_paths(vfs_root, path):
+    from knowledge_studio.vfs import VfsError, VfsResolver
+
+    with pytest.raises(VfsError) as exc:
+        VfsResolver(vfs_root).uri_for_path(path)
+    assert exc.value.code == "PATH_NOT_EXPOSED"
