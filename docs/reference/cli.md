@@ -15,6 +15,7 @@ parent: 参考
 | `oks status` | 知识库概览（wiki/raw 计数 + tier + 质量） |
 | `oks metrics [--html]` | 知识指标；可生成基于注入与反馈记录的本地 HTML 报告和调参建议 |
 | `oks recall "<q>"` | 召回（6+1 因子，双路 wiki + raw） |
+| `oks fs ls/tree/stat/read/overview/find` | 通过 canonical `oks://` URI 只读浏览当前实例 |
 | `oks ingest run <src>` | 摄入材料 → Raw Bundle |
 | `oks ingest prepare <src>` | 生成 ingest 协议骨架 |
 | `oks wiki create/list/get/pin/archive/use/export` | wiki 页管理 + OKF 导出 |
@@ -31,6 +32,27 @@ parent: 参考
 | `oks eval recall <dataset>` | 召回离线评测 |
 
 完整命令：`oks --help`。
+
+## 只读虚拟文件系统
+
+`oks fs` 为当前 OKS 实例提供统一的只读访问层。六个命令的准确形式是：
+
+```bash
+oks fs ls <uri> [--format table|json]
+oks fs tree <uri> [--depth 0..10] [--max-entries 1..10000] [--format table|json]
+oks fs stat <uri> [--format table|json]
+oks fs read <uri> [--offset N] [--limit 1..1000000] [--format table|json]
+oks fs overview <uri> [--format table|json]
+oks fs find <literal-query> --under <uri> [--max-results 1..200] [--format table|json]
+```
+
+根 URI 是 `oks://`，公开 scope 固定为 `profiles`、`raw`、`wiki`、`drafts`、`mail`、`skills`、`traces`。其中 `traces` 是 `raw/executions/` 的唯一公开地址，`raw/.logs/` 不公开；`settings/`、`_meta/`、`.oks/` 和实例中的其他路径也不会经 VFS 暴露。URI 中的路径会规范化并拒绝目录穿越、编码分隔符和任意 symlink。
+
+边界默认值如下：`tree` 默认深度 3、最多 1000 个节点；`read` 默认从字符 offset 0 返回最多 20,000 个 UTF-8 字符，单次最多 1,000,000 个字符；`find` 做大小写不敏感的字面搜索，默认最多 50 项、最多 200 项，正文 snippet 最多 200 个字符。达到结果上限时响应会显式设置 `truncated`；`find` 遇到二进制或不可读 UTF-8 文件时会累计 `skipped_count`。
+
+`--format json` 的成功外壳固定为 `oks-fs-response/v1`，包含 `schema_version`、`operation`、canonical `uri` 和 `result`；失败外壳用相同 schema，并通过 `error.code` 与不含物理绝对路径的 `error.message` 报错。默认 `table` 格式供人直接阅读。
+
+VFS 没有 `write`、`mkdir`、`mv`、`rm`、`cp` 或其他修改命令。Raw 写入、Draft 审核和 Wiki promotion 仍必须走各自领域命令，VFS 不能绕过治理门控。`overview` 只做机械目录统计，不生成摘要或 sidecar；`find` 不调用 LLM、embedding、reranker 或递归 Agent。
 
 ### hook 可调参数（env）
 

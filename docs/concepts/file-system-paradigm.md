@@ -11,17 +11,11 @@ OKS 把知识组织成文件系统，不是向量数据库。这一页讲为什�
 
 主流 RAG 把知识存进向量库（embedding + ANN 索引），检索靠余弦相似度。OKS 选了另一条路：**所有知识是 markdown 文件 + frontmatter，按目录组织，用 Git 版本控制**。
 
-这是字节 OpenViking 提出的"文件系统范式"的实例——把记忆、资源、技能都映射成虚拟文件系统的目录和文件，每个条目有唯一路径。
+OpenViking 的虚拟文件系统与渐进浏览思路为 OKS 提供了设计启发：Agent 可以通过稳定 URI 先看目录，再按需读取具体内容。OKS 当前用 canonical `oks://` 地址和严格只读的 `oks fs` 命令实现这一访问方式，但它不是 OpenViking 的复刻，也没有引入 OpenViking 代码。
 
-三层按需加载（OpenViking 的 L0/L1/L2）在 OKS 的对应：
+两者的数据语义并不相同。OpenViking 的 L0、L1 是针对同一目录子树派生的目录级摘要，L2 是该子树中的完整内容；OKS 的 frontmatter、Wiki 和 Raw 则不是同一对象的三层表示。Raw 是保真材料，Wiki 是经过蒸馏和人工审核的独立知识对象，两者通过 provenance 关联，并受 Raw → Draft → Wiki 生命周期约束。因此不能把 frontmatter、Wiki 正文和 Raw 分别直接命名为 L0、L1、L2。
 
-| OpenViking 层 | tokens | OKS 对应 |
-|---------------|--------|----------|
-| L0 摘要 | ~100 | frontmatter（title/type/area/tags/importance）——recall 先扫这个判相关性 |
-| L1 概览 | ~2000 | wiki 正文——recall 命中后注入的内容 |
-| L2 全文 | 完整 | `raw/` 原始文件——需要细节时按需读 |
-
-recall 默认只注入 L0+L1（wiki frontmatter + 正文）。`raw/`（L2）只在双路召回命中时补细节。Token 花在刀刃上——大部分查询到 L1 即可完成决策。
+当前 MVP 只借鉴“稳定命名空间 + 渐进浏览”：`oks fs overview` 返回机械目录统计，`oks fs read` 提供有界 UTF-8 分页，`oks fs find` 做确定性的字面搜索。它不会生成 L0/L1 摘要 sidecar，也不调用 LLM、embedding 或 reranker；语义召回仍由 `oks recall` 及其既有 backend 负责。
 
 ## Markdown 纯文本的选择
 
