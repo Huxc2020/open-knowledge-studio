@@ -1,11 +1,108 @@
 """Tests for CLI platform compatibility helpers and config commands."""
 
 from datetime import date
+import json
 from pathlib import Path
 import sys
 
 import pytest
 from typer.testing import CliRunner
+
+
+def _make_vfs_instance(root: Path) -> None:
+    (root / "wiki").mkdir()
+    (root / "wiki/page.md").write_text("# Page\nneedle here\n", encoding="utf-8")
+
+
+def test_fs_ls_json_contract(tmp_path, monkeypatch):
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    _make_vfs_instance(tmp_path)
+
+    result = CliRunner().invoke(
+        cli.app, ["fs", "ls", "oks://wiki/", "--format", "json"]
+    )
+    payload = json.loads(result.stdout)
+
+    assert result.exit_code == 0
+    assert payload["schema_version"] == "oks-fs-response/v1"
+    assert payload["operation"] == "ls"
+    assert payload["uri"] == "oks://wiki/"
+    assert payload["result"]["entries"][0]["uri"] == "oks://wiki/page.md"
+
+
+@pytest.mark.parametrize(
+    ("command", "args", "result_key"),
+    [
+        ("tree", ["oks://wiki/", "--depth", "1"], "entries"),
+        ("stat", ["oks://wiki/page.md"], "type"),
+        ("read", ["oks://wiki/page.md", "--limit", "4"], "content"),
+        ("overview", ["oks://wiki/"], "counts"),
+        ("find", ["needle", "--under", "oks://wiki/"], "matches"),
+    ],
+)
+def test_fs_commands_share_json_envelope(
+    tmp_path, monkeypatch, command, args, result_key
+):
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    _make_vfs_instance(tmp_path)
+
+    result = CliRunner().invoke(cli.app, ["fs", command, *args, "--format", "json"])
+    payload = json.loads(result.stdout)
+
+    assert result.exit_code == 0
+    assert payload["schema_version"] == "oks-fs-response/v1"
+    assert payload["operation"] == command
+    assert payload["uri"].startswith("oks://wiki/")
+    assert result_key in payload["result"]
+
+
+def test_fs_error_json_hides_physical_path(tmp_path, monkeypatch):
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    result = CliRunner().invoke(
+        cli.app,
+        ["fs", "read", "oks://settings/recall.yaml", "--format", "json"],
+    )
+    payload = json.loads(result.stdout)
+
+    assert result.exit_code == 2
+    assert payload["error"]["code"] == "UNSUPPORTED_SCOPE"
+    assert str(tmp_path) not in result.stdout
+
+
+def test_fs_text_output_includes_uri_and_truncation(tmp_path, monkeypatch):
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    _make_vfs_instance(tmp_path)
+    result = CliRunner().invoke(
+        cli.app,
+        ["fs", "read", "oks://wiki/page.md", "--limit", "4"],
+    )
+
+    assert result.exit_code == 0
+    assert "oks://wiki/page.md" in result.stdout
+    assert "truncated" in result.stdout.lower()
+
+
+@pytest.mark.parametrize("command", ["write", "mkdir", "mv", "rm", "cp"])
+def test_fs_has_no_mutating_commands(tmp_path, monkeypatch, command):
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    sentinel = tmp_path / "sentinel.md"
+    sentinel.write_text("unchanged", encoding="utf-8")
+
+    result = CliRunner().invoke(cli.app, ["fs", command])
+
+    assert result.exit_code != 0
+    assert "No such command" in result.output
+    assert sentinel.read_text(encoding="utf-8") == "unchanged"
 
 
 class _FakeStream:
