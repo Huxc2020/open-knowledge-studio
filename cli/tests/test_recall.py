@@ -130,6 +130,30 @@ def test_backend_knowledge_hit_has_canonical_uri_and_preserves_ranking(kb_root, 
     assert all(h["schema_version"] == "recall-hit/v1" for h in hits)
 
 
+def test_backend_skips_stale_slug_and_keeps_valid_hit_uri(kb_root, monkeypatch, caplog):
+    from knowledge_studio import search
+    from knowledge_studio.recall import recall
+    from knowledge_studio.search import SearchHit
+
+    class FakeBackend:
+        def search(self, query, *, limit, scope, **kwargs):
+            return [
+                SearchHit("stale-missing-page", "Stale Page", 9.0, "fake"),
+                SearchHit("git-branching", "Git Branching Strategy", 4.25, "fake"),
+            ][:limit]
+
+    monkeypatch.setattr(search, "get_backend", lambda name, root: FakeBackend())
+
+    hits = recall("git", limit=2, goal="none", search_backend="fake")["knowledge"]
+
+    assert [(h["slug"], h["rank"], h["relevance"]) for h in hits] == [
+        ("git-branching", 1, 4.25),
+    ]
+    assert hits[0]["uri"] == "oks://wiki/computing/concepts/git-branching.md"
+    assert "stale-missing-page" in caplog.text
+    assert str(kb_root) not in caplog.text
+
+
 def test_recall_knowledge_anti_pattern_boosted(kb_root):
     from knowledge_studio.recall import recall_knowledge
     results = recall_knowledge("deployment", limit=5)

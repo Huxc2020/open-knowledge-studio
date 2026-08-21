@@ -39,7 +39,7 @@ from knowledge_studio.store import (
     raw_dir,
     repo_root,
 )
-from knowledge_studio.vfs import VfsResolver
+from knowledge_studio.vfs import VfsError, VfsResolver
 
 _logger = logging.getLogger(__name__)
 
@@ -541,14 +541,33 @@ def _recall_knowledge_via_backend(
     # 其余字段从 wiki 页详情查补，保证 /query skill 和 eval 不受影响。
     pages = {p.get("slug"): p for p in list_wiki_pages()}
     results: list[dict[str, Any]] = []
-    for rank, h in enumerate(hits[:limit], start=1):
-        p = pages.get(h.slug, {})
+    for h in hits[:limit]:
+        p = pages.get(h.slug)
+        if not p or not p.get("file_path"):
+            _logger.warning(
+                "recall backend skipped hit without a current wiki page: "
+                "slug=%r backend=%r",
+                h.slug,
+                h.backend,
+            )
+            continue
+        try:
+            uri = _uri_for_hit_path(repo_root(), p["file_path"])
+        except VfsError as exc:
+            _logger.warning(
+                "recall backend skipped hit with a non-public wiki path: "
+                "slug=%r backend=%r code=%s",
+                h.slug,
+                h.backend,
+                exc.code,
+            )
+            continue
         review = p.get("review") or {}
         entry: dict[str, Any] = {
             "schema_version": RECALL_HIT_SCHEMA,
             "channel": "knowledge",
-            "rank": rank,
-            "uri": _uri_for_hit_path(repo_root(), p["file_path"]),
+            "rank": len(results) + 1,
+            "uri": uri,
             "slug": h.slug,
             "title": h.title or p.get("title", h.slug),
             "type": p.get("type", p.get("category", "concept")),
