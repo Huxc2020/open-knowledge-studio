@@ -212,6 +212,166 @@ def test_read_validates_pagination(vfs_root, offset, limit):
     assert exc.value.code == "INVALID_ARGUMENT"
 
 
+def test_tree_honors_depth_and_entry_limit(vfs_root):
+    from knowledge_studio.vfs import VfsResolver, VfsService
+
+    for name in ("a.md", "b.md", "c.md"):
+        (vfs_root / "wiki" / name).write_text(name, encoding="utf-8")
+    service = VfsService(VfsResolver(vfs_root))
+
+    result = service.tree("oks://wiki/", depth=1, max_entries=2)
+
+    assert len(result["entries"]) == 2
+    assert result["truncated"] is True
+
+
+def test_tree_depth_zero_returns_no_descendants(vfs_root):
+    from knowledge_studio.vfs import VfsResolver, VfsService
+
+    result = VfsService(VfsResolver(vfs_root)).tree("oks://wiki/", depth=0)
+
+    assert result["entries"] == []
+    assert result["truncated"] is False
+
+
+def test_overview_is_mechanical_and_does_not_write_sidecars(vfs_root):
+    from knowledge_studio.vfs import VfsResolver, VfsService
+
+    index = vfs_root / "wiki/INDEX.md"
+    index.write_text("# Index\n", encoding="utf-8")
+    result = VfsService(VfsResolver(vfs_root)).overview("oks://wiki/")
+
+    assert result["index_uri"] == "oks://wiki/INDEX.md"
+    assert result["counts"] == {"directory": 1, "file": 1, "special": 0}
+    assert [entry["name"] for entry in result["directories"]] == ["computing"]
+    assert [entry["name"] for entry in result["files"]] == ["INDEX.md"]
+    assert not (vfs_root / "wiki/.abstract.md").exists()
+    assert not (vfs_root / "wiki/.overview.md").exists()
+
+
+def test_find_is_literal_bounded_and_reports_skips(vfs_root):
+    from knowledge_studio.vfs import VfsResolver, VfsService
+
+    (vfs_root / "wiki/a.md").write_text(
+        "Atomic Write prevents corruption", encoding="utf-8"
+    )
+    (vfs_root / "wiki/b[1].md").write_text("literal brackets", encoding="utf-8")
+    (vfs_root / "wiki/blob.bin").write_bytes(b"\xff\x00")
+    service = VfsService(VfsResolver(vfs_root))
+
+    result = service.find("atomic write", under="oks://wiki/", max_results=1)
+
+    assert result["matches"][0]["uri"] == "oks://wiki/a.md"
+    assert result["matches"][0]["match"] == "content"
+    assert len(result["matches"][0]["snippet"]) <= 200
+    assert result["skipped_count"] == 1
+    assert result["truncated"] is False
+
+
+def test_find_matches_paths_literally_and_truncates_on_another_match(vfs_root):
+    from knowledge_studio.vfs import VfsResolver, VfsService
+
+    (vfs_root / "wiki/brackets[1].md").write_text("first", encoding="utf-8")
+    (vfs_root / "wiki/brackets[2].md").write_text("second", encoding="utf-8")
+    result = VfsService(VfsResolver(vfs_root)).find(
+        "BRACKETS[", under="oks://wiki/", max_results=1
+    )
+
+    assert result["matches"] == [
+        {
+            "uri": "oks://wiki/brackets%5B1%5D.md",
+            "match": "path",
+            "snippet": "brackets[1].md",
+        }
+    ]
+    assert result["truncated"] is True
+
+
+def test_tree_and_find_honor_exclusions_and_reject_symlinks(vfs_root):
+    from knowledge_studio.vfs import VfsError, VfsResolver, VfsService
+
+    (vfs_root / "raw/executions/hidden.md").write_text(
+        "hidden needle", encoding="utf-8"
+    )
+    (vfs_root / "raw/.logs/hidden.md").write_text("hidden needle", encoding="utf-8")
+    service = VfsService(VfsResolver(vfs_root))
+
+    assert service.tree("oks://raw/")["entries"] == []
+    assert service.find("hidden needle", under="oks://raw/")["matches"] == []
+
+    (vfs_root / "wiki/link.md").symlink_to(vfs_root / "profiles/team.md")
+    for operation in (
+        lambda: service.tree("oks://wiki/"),
+        lambda: service.find("team", under="oks://wiki/"),
+    ):
+        with pytest.raises(VfsError) as exc:
+            operation()
+        assert exc.value.code == "SYMLINK_NOT_ALLOWED"
+
+
+def test_find_utf8_content_snippet_is_character_bounded(vfs_root):
+    from knowledge_studio.vfs import VfsResolver, VfsService
+
+    (vfs_root / "wiki/chinese.md").write_text(
+        "前" * 120 + "原子写入" + "后" * 120, encoding="utf-8"
+    )
+
+    match = VfsService(VfsResolver(vfs_root)).find(
+        "原子写入", under="oks://wiki/"
+    )["matches"][0]
+
+    assert match["match"] == "content"
+    assert "原子写入" in match["snippet"]
+    assert len(match["snippet"]) <= 200
+
+
+@pytest.mark.parametrize(
+    ("operation", "kwargs", "code"),
+    [
+        ("tree", {"uri": "oks://wiki/", "depth": -1}, "INVALID_ARGUMENT"),
+        ("tree", {"uri": "oks://wiki/", "depth": 11}, "INVALID_ARGUMENT"),
+        (
+            "tree",
+            {"uri": "oks://wiki/", "max_entries": 0},
+            "INVALID_ARGUMENT",
+        ),
+        (
+            "tree",
+            {"uri": "oks://wiki/", "max_entries": 10_001},
+            "INVALID_ARGUMENT",
+        ),
+        ("find", {"query": "", "under": "oks://wiki/"}, "INVALID_ARGUMENT"),
+        (
+            "find",
+            {"query": "x", "under": "oks://wiki/", "max_results": 0},
+            "INVALID_ARGUMENT",
+        ),
+        (
+            "find",
+            {"query": "x", "under": "oks://wiki/", "max_results": 201},
+            "INVALID_ARGUMENT",
+        ),
+    ],
+)
+def test_browsing_operations_validate_limits(vfs_root, operation, kwargs, code):
+    from knowledge_studio.vfs import VfsError, VfsResolver, VfsService
+
+    with pytest.raises(VfsError) as exc:
+        getattr(VfsService(VfsResolver(vfs_root)), operation)(**kwargs)
+    assert exc.value.code == code
+
+
+@pytest.mark.parametrize("operation", ["tree", "overview"])
+def test_directory_browsing_rejects_file_targets(vfs_root, operation):
+    from knowledge_studio.vfs import VfsError, VfsResolver, VfsService
+
+    with pytest.raises(VfsError) as exc:
+        getattr(VfsService(VfsResolver(vfs_root)), operation)(
+            "oks://profiles/team.md"
+        )
+    assert exc.value.code == "NOT_DIRECTORY"
+
+
 def _file_snapshot(root: Path) -> dict[str, str]:
     snapshot = {}
     for path in root.rglob("*"):
@@ -232,5 +392,8 @@ def test_basic_vfs_operations_do_not_change_files(vfs_root):
     service.ls("oks://wiki/computing/concepts/")
     service.stat("oks://profiles/team.md")
     service.read("oks://profiles/team.md")
+    service.tree("oks://wiki/")
+    service.overview("oks://wiki/")
+    service.find("team", under="oks://profiles/")
 
     assert _file_snapshot(vfs_root) == before

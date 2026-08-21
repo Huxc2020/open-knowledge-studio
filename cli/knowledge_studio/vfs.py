@@ -188,6 +188,24 @@ def _validate_slice(offset: int, limit: int) -> None:
         )
 
 
+def _validate_tree_limits(depth: int, max_entries: int) -> None:
+    if not 0 <= depth <= 10 or not 1 <= max_entries <= 10_000:
+        raise VfsError(
+            "INVALID_ARGUMENT",
+            "depth must be 0..10 and max_entries must be 1..10000",
+        )
+
+
+def _validate_find(query: str, max_results: int) -> str:
+    normalized = query.casefold()
+    if not normalized or not 1 <= max_results <= 200:
+        raise VfsError(
+            "INVALID_ARGUMENT",
+            "query must be non-empty and max_results must be 1..200",
+        )
+    return normalized
+
+
 class VfsService:
     def __init__(self, resolver: VfsResolver | None = None):
         self.resolver = resolver or VfsResolver()
@@ -198,6 +216,19 @@ class VfsService:
         if node_type == "directory" and not uri.endswith("/"):
             uri += "/"
         return {"name": path.name, "type": node_type, "uri": uri}
+
+    def _visible_children(self, path: Path, mount: Mount) -> list[Path]:
+        mount_root = self.resolver.root.joinpath(*mount.relative_root)
+        children: list[Path] = []
+        for child in path.iterdir():
+            relative = child.relative_to(mount_root).parts
+            if any(
+                relative[: len(prefix)] == prefix
+                for prefix in mount.excluded_prefixes
+            ):
+                continue
+            children.append(child)
+        return sorted(children, key=lambda child: (child.name.casefold(), child.name))
 
     def ls(self, uri: str) -> dict[str, object]:
         node = self.resolver.resolve(uri)
@@ -217,17 +248,8 @@ class VfsService:
         if not node.path.is_dir():
             raise VfsError("NOT_DIRECTORY", f"Not a directory: {node.uri.render()}")
 
-        mount_root = self.resolver.root.joinpath(*node.mount.relative_root)
         entries: list[dict[str, str]] = []
-        for child in sorted(
-            node.path.iterdir(), key=lambda path: (path.name.casefold(), path.name)
-        ):
-            relative = child.relative_to(mount_root).parts
-            if any(
-                relative[: len(prefix)] == prefix
-                for prefix in node.mount.excluded_prefixes
-            ):
-                continue
+        for child in self._visible_children(node.path, node.mount):
             entries.append(self._entry(child))
         return {"uri": node.uri.render(), "entries": entries}
 
@@ -289,4 +311,168 @@ class VfsService:
             "total_chars": len(content),
             "truncated": truncated,
             "next_offset": next_offset if truncated else None,
+        }
+
+    def tree(
+        self, uri: str, *, depth: int = 3, max_entries: int = 1_000
+    ) -> dict[str, object]:
+        _validate_tree_limits(depth, max_entries)
+        node = self.resolver.resolve(uri)
+
+        def physical_entries(
+            path: Path, mount: Mount, level: int
+        ):
+            if level > depth:
+                return
+            for child in self._visible_children(path, mount):
+                entry = self._entry(child)
+                yield entry
+                if entry["type"] == "directory" and level < depth:
+                    yield from physical_entries(child, mount, level + 1)
+
+        def all_entries():
+            if depth == 0:
+                return
+            if node.synthetic_root:
+                for scope, mount in MOUNTS.items():
+                    yield {
+                        "name": scope,
+                        "type": "directory",
+                        "uri": f"oks://{scope}/",
+                    }
+                    mount_root = self.resolver.root.joinpath(*mount.relative_root)
+                    if depth > 1 and mount_root.exists():
+                        self.resolver.resolve(f"oks://{scope}/")
+                        yield from physical_entries(mount_root, mount, 2)
+                return
+            assert node.path is not None and node.mount is not None
+            if not node.path.is_dir():
+                raise VfsError(
+                    "NOT_DIRECTORY", f"Not a directory: {node.uri.render()}"
+                )
+            yield from physical_entries(node.path, node.mount, 1)
+
+        entries: list[dict[str, str]] = []
+        truncated = False
+        for entry in all_entries():
+            if len(entries) == max_entries:
+                truncated = True
+                break
+            entries.append(entry)
+        return {
+            "uri": node.uri.render(),
+            "entries": entries,
+            "depth": depth,
+            "truncated": truncated,
+        }
+
+    def overview(self, uri: str) -> dict[str, object]:
+        node = self.resolver.resolve(uri)
+        if node.synthetic_root:
+            children = self.ls(uri)["entries"]
+        else:
+            assert node.path is not None and node.mount is not None
+            if not node.path.is_dir():
+                raise VfsError(
+                    "NOT_DIRECTORY", f"Not a directory: {node.uri.render()}"
+                )
+            children = [
+                self._entry(child)
+                for child in self._visible_children(node.path, node.mount)
+            ]
+
+        directories = [entry for entry in children if entry["type"] == "directory"]
+        files = [entry for entry in children if entry["type"] == "file"]
+        counts = {
+            node_type: sum(entry["type"] == node_type for entry in children)
+            for node_type in ("directory", "file", "special")
+        }
+        index_uri = next(
+            (entry["uri"] for entry in files if entry["name"] == "INDEX.md"),
+            None,
+        )
+        return {
+            "uri": node.uri.render(),
+            "directories": directories,
+            "files": files,
+            "counts": counts,
+            "index_uri": index_uri,
+        }
+
+    @staticmethod
+    def _snippet(content: str, match_index: int) -> str:
+        start = max(0, match_index - 80)
+        return content[start : start + 200]
+
+    def find(
+        self, query: str, *, under: str, max_results: int = 50
+    ) -> dict[str, object]:
+        normalized = _validate_find(query, max_results)
+        node = self.resolver.resolve(under)
+        if not node.synthetic_root and (node.path is None or not node.path.is_dir()):
+            raise VfsError("NOT_DIRECTORY", f"Not a directory: {node.uri.render()}")
+
+        def files_in(path: Path, mount: Mount):
+            for child in self._visible_children(path, mount):
+                entry = self._entry(child)
+                if entry["type"] == "directory":
+                    yield from files_in(child, mount)
+                elif entry["type"] == "file":
+                    yield child, entry
+
+        def all_files():
+            if node.synthetic_root:
+                for scope, mount in MOUNTS.items():
+                    mount_root = self.resolver.root.joinpath(*mount.relative_root)
+                    if not mount_root.exists():
+                        continue
+                    self.resolver.resolve(f"oks://{scope}/")
+                    for path, entry in files_in(mount_root, mount):
+                        relative = path.relative_to(mount_root).as_posix()
+                        yield path, entry, f"{scope}/{relative}"
+                return
+            assert node.path is not None and node.mount is not None
+            for path, entry in files_in(node.path, node.mount):
+                yield path, entry, path.relative_to(node.path).as_posix()
+
+        matches: list[dict[str, str]] = []
+        skipped_count = 0
+        truncated = False
+        for path, entry, relative_path in all_files():
+            match: dict[str, str] | None = None
+            if normalized in relative_path.casefold():
+                match = {
+                    "uri": entry["uri"],
+                    "match": "path",
+                    "snippet": relative_path[:200],
+                }
+            else:
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except (UnicodeDecodeError, OSError):
+                    skipped_count += 1
+                    continue
+                if "\x00" in content:
+                    skipped_count += 1
+                    continue
+                match_index = content.casefold().find(normalized)
+                if match_index >= 0:
+                    match = {
+                        "uri": entry["uri"],
+                        "match": "content",
+                        "snippet": self._snippet(content, match_index),
+                    }
+            if match is None:
+                continue
+            if len(matches) == max_results:
+                truncated = True
+                break
+            matches.append(match)
+
+        return {
+            "uri": node.uri.render(),
+            "query": query,
+            "matches": matches,
+            "skipped_count": skipped_count,
+            "truncated": truncated,
         }
