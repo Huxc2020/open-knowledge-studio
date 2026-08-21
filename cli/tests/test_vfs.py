@@ -1,4 +1,5 @@
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -94,13 +95,15 @@ def test_any_symlink_component_is_rejected(vfs_root):
     assert exc.value.code == "SYMLINK_NOT_ALLOWED"
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        Path("wiki") / ".." / "settings" / "recall.yaml",
-        Path("wiki") / "unsafe\\name.md",
-    ],
-)
+_UNSAFE_PHYSICAL_PATHS = [Path("wiki") / ".." / "settings" / "recall.yaml"]
+if os.name != "nt":
+    # Windows treats backslashes as native separators, so a physical filename
+    # containing one cannot be represented there. URI-level backslashes remain
+    # covered by test_invalid_uri_is_rejected on every platform.
+    _UNSAFE_PHYSICAL_PATHS.append(Path("wiki") / "unsafe\\name.md")
+
+
+@pytest.mark.parametrize("path", _UNSAFE_PHYSICAL_PATHS)
 def test_uri_for_path_rejects_noncanonical_or_unsafe_paths(vfs_root, path):
     from knowledge_studio.vfs import VfsError, VfsResolver
 
@@ -136,7 +139,7 @@ def test_ls_and_stat_return_canonical_nodes(vfs_root):
     ]
     assert stat["type"] == "file"
     assert stat["uri"] == "oks://profiles/team.md"
-    assert stat["size"] == len("# Team\n".encode())
+    assert stat["size"] == (vfs_root / "profiles/team.md").stat().st_size
     assert stat["modified_at"].endswith("+00:00")
     assert stat["mount"] == "profiles"
 

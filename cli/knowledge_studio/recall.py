@@ -29,7 +29,7 @@ import json
 import logging
 import math
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from knowledge_studio.store import (
@@ -69,6 +69,11 @@ def _uri_for_hit_path(root: Path, path: str | Path) -> str:
     if not candidate.is_absolute():
         candidate = root / candidate
     return VfsResolver(root).uri_for_path(candidate)
+
+
+def _portable_source_path(path: PurePath, root: PurePath) -> str:
+    """Return a stable, POSIX-style path relative to the knowledge base."""
+    return path.relative_to(root).as_posix()
 
 
 def set_recall_yaml_param(kb_root: Path, location: tuple[str | None, str], value: str) -> None:
@@ -387,7 +392,7 @@ def recall_episodic(
                     snippet = content[snippet_idx:snippet_idx + 300] if snippet_idx >= 0 else content[:300]
                     results.append((freshness, {
                         "type": "raw",
-                        "source_path": str(f.relative_to(root)),
+                        "source_path": _portable_source_path(f, root),
                         "snippet": snippet,
                         "freshness": round(freshness, 3),
                         "relevance": round(freshness, 3),
@@ -408,7 +413,7 @@ def recall_episodic(
                         freshness = _freshness_score(f)
                         results.append((freshness + 0.5, {
                             "type": "trace",
-                            "source_path": str(f.relative_to(root)),
+                            "source_path": _portable_source_path(f, root),
                             "snippet": content[:300],
                             "freshness": round(freshness, 3),
                             "relevance": round(freshness + 0.5, 3),
@@ -429,7 +434,7 @@ def recall_episodic(
                     snippet = content[snippet_idx:snippet_idx + 300] if snippet_idx >= 0 else content[:300]
                     results.append((freshness + 1.0, {
                         "type": "profile",
-                        "source_path": str(f.relative_to(root)),
+                        "source_path": _portable_source_path(f, root),
                         "snippet": snippet,
                         "freshness": round(freshness, 3),
                         "relevance": round(freshness + 1.0, 3),

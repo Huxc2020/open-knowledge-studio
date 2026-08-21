@@ -2,7 +2,7 @@
 import json
 import os
 import yaml
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -74,6 +74,15 @@ def test_tokenize():
     tokens = _tokenize("git branch strategy")
     assert isinstance(tokens, set)
     assert len(tokens) > 0
+
+
+def test_source_path_is_posix_on_windows():
+    from knowledge_studio.recall import _portable_source_path
+
+    root = PureWindowsPath("C:/kb")
+    path = root / "raw" / "2026" / "notes.md"
+
+    assert _portable_source_path(path, root) == "raw/2026/notes.md"
 
 
 def test_recall_knowledge_returns_results(kb_root):
