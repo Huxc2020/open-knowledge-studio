@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
@@ -169,3 +170,123 @@ class VfsResolver:
             self._reject_symlinks(self.root, mount.relative_root + parts)
             return OksUri(mount.scope, tuple(parts)).render()
         raise VfsError("PATH_NOT_EXPOSED", "Physical path is outside public OKS scopes")
+
+
+def _node_type(path: Path) -> str:
+    if path.is_dir():
+        return "directory"
+    if path.is_file():
+        return "file"
+    return "special"
+
+
+def _validate_slice(offset: int, limit: int) -> None:
+    if offset < 0 or not 1 <= limit <= 1_000_000:
+        raise VfsError(
+            "INVALID_ARGUMENT",
+            "offset must be non-negative and limit must be 1..1000000",
+        )
+
+
+class VfsService:
+    def __init__(self, resolver: VfsResolver | None = None):
+        self.resolver = resolver or VfsResolver()
+
+    def _entry(self, path: Path) -> dict[str, str]:
+        uri = self.resolver.uri_for_path(path)
+        node_type = _node_type(path)
+        if node_type == "directory" and not uri.endswith("/"):
+            uri += "/"
+        return {"name": path.name, "type": node_type, "uri": uri}
+
+    def ls(self, uri: str) -> dict[str, object]:
+        node = self.resolver.resolve(uri)
+        if node.synthetic_root:
+            return {
+                "uri": node.uri.render(),
+                "entries": [
+                    {
+                        "name": scope,
+                        "type": "directory",
+                        "uri": f"oks://{scope}/",
+                    }
+                    for scope in MOUNTS
+                ],
+            }
+        assert node.path is not None and node.mount is not None
+        if not node.path.is_dir():
+            raise VfsError("NOT_DIRECTORY", f"Not a directory: {node.uri.render()}")
+
+        mount_root = self.resolver.root.joinpath(*node.mount.relative_root)
+        entries: list[dict[str, str]] = []
+        for child in sorted(
+            node.path.iterdir(), key=lambda path: (path.name.casefold(), path.name)
+        ):
+            relative = child.relative_to(mount_root).parts
+            if any(
+                relative[: len(prefix)] == prefix
+                for prefix in node.mount.excluded_prefixes
+            ):
+                continue
+            entries.append(self._entry(child))
+        return {"uri": node.uri.render(), "entries": entries}
+
+    def stat(self, uri: str) -> dict[str, object]:
+        node = self.resolver.resolve(uri)
+        if node.synthetic_root:
+            return {
+                "uri": node.uri.render(),
+                "type": "directory",
+                "size": None,
+                "modified_at": None,
+                "mount": None,
+            }
+        assert node.path is not None and node.mount is not None
+        node_type = _node_type(node.path)
+        metadata = node.path.stat()
+        canonical_uri = self.resolver.uri_for_path(node.path)
+        if node_type == "directory" and not canonical_uri.endswith("/"):
+            canonical_uri += "/"
+        return {
+            "uri": canonical_uri,
+            "type": node_type,
+            "size": metadata.st_size if node_type != "directory" else None,
+            "modified_at": datetime.fromtimestamp(
+                metadata.st_mtime, tz=timezone.utc
+            ).isoformat(),
+            "mount": node.mount.scope,
+        }
+
+    def read(
+        self, uri: str, *, offset: int = 0, limit: int = 20_000
+    ) -> dict[str, object]:
+        _validate_slice(offset, limit)
+        node = self.resolver.resolve(uri)
+        if node.synthetic_root or node.path is None or not node.path.is_file():
+            raise VfsError(
+                "UNSUPPORTED_CONTENT", f"Not a readable file: {node.uri.render()}"
+            )
+        try:
+            content = node.path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError) as exc:
+            raise VfsError(
+                "UNSUPPORTED_CONTENT", f"File is not readable UTF-8: {node.uri.render()}"
+            ) from exc
+        if "\x00" in content:
+            raise VfsError(
+                "UNSUPPORTED_CONTENT",
+                f"File is not readable UTF-8 text: {node.uri.render()}",
+            )
+
+        page = content[offset : offset + limit]
+        next_offset = offset + len(page)
+        truncated = next_offset < len(content)
+        return {
+            "uri": self.resolver.uri_for_path(node.path),
+            "content": page,
+            "offset": offset,
+            "returned_chars": len(page),
+            "total_chars": len(content),
+            "truncated": truncated,
+            "next_offset": next_offset if truncated else None,
+        }
