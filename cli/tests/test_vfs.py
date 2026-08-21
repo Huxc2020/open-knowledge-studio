@@ -309,6 +309,25 @@ def test_tree_and_find_honor_exclusions_and_reject_symlinks(vfs_root):
         assert exc.value.code == "SYMLINK_NOT_ALLOWED"
 
 
+def test_root_tree_and_find_reject_broken_symlink_mount(vfs_root):
+    from knowledge_studio.vfs import VfsError, VfsResolver, VfsService
+
+    (vfs_root / ".agents/skills/query").rmdir()
+    (vfs_root / ".agents/skills").rmdir()
+    (vfs_root / ".agents/skills").symlink_to(
+        vfs_root / "missing-skills", target_is_directory=True
+    )
+    service = VfsService(VfsResolver(vfs_root))
+
+    for operation in (
+        lambda: service.tree("oks://"),
+        lambda: service.find("needle", under="oks://"),
+    ):
+        with pytest.raises(VfsError) as exc:
+            operation()
+        assert exc.value.code == "SYMLINK_NOT_ALLOWED"
+
+
 def test_find_utf8_content_snippet_is_character_bounded(vfs_root):
     from knowledge_studio.vfs import VfsResolver, VfsService
 

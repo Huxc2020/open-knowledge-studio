@@ -230,6 +230,11 @@ class VfsService:
             children.append(child)
         return sorted(children, key=lambda child: (child.name.casefold(), child.name))
 
+    def _existing_mount_root(self, scope: str) -> Path | None:
+        node = self.resolver.resolve(f"oks://{scope}/", must_exist=False)
+        assert node.path is not None
+        return node.path if node.path.exists() else None
+
     def ls(self, uri: str) -> dict[str, object]:
         node = self.resolver.resolve(uri)
         if node.synthetic_root:
@@ -340,9 +345,8 @@ class VfsService:
                         "type": "directory",
                         "uri": f"oks://{scope}/",
                     }
-                    mount_root = self.resolver.root.joinpath(*mount.relative_root)
-                    if depth > 1 and mount_root.exists():
-                        self.resolver.resolve(f"oks://{scope}/")
+                    mount_root = self._existing_mount_root(scope)
+                    if depth > 1 and mount_root is not None:
                         yield from physical_entries(mount_root, mount, 2)
                 return
             assert node.path is not None and node.mount is not None
@@ -423,10 +427,9 @@ class VfsService:
         def all_files():
             if node.synthetic_root:
                 for scope, mount in MOUNTS.items():
-                    mount_root = self.resolver.root.joinpath(*mount.relative_root)
-                    if not mount_root.exists():
+                    mount_root = self._existing_mount_root(scope)
+                    if mount_root is None:
                         continue
-                    self.resolver.resolve(f"oks://{scope}/")
                     for path, entry in files_in(mount_root, mount):
                         relative = path.relative_to(mount_root).as_posix()
                         yield path, entry, f"{scope}/{relative}"
