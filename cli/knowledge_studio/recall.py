@@ -39,6 +39,7 @@ from knowledge_studio.store import (
     raw_dir,
     repo_root,
 )
+from knowledge_studio.vfs import VfsResolver
 
 _logger = logging.getLogger(__name__)
 
@@ -60,6 +61,14 @@ RECALL_RESPONSE_SCHEMA = "recall-response/v1"
 # memory. executions/ holds provenance traces; .logs/ holds tool and AI-written
 # digests (see distiller.write_digest).
 _NON_RECALLABLE_RAW_SUBDIRS = ("executions", ".logs")
+
+
+def _uri_for_hit_path(root: Path, path: str | Path) -> str:
+    """Map a hit's physical path through the shared canonical VFS resolver."""
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    return VfsResolver(root).uri_for_path(candidate)
 
 
 def set_recall_yaml_param(kb_root: Path, location: tuple[str | None, str], value: str) -> None:
@@ -428,6 +437,7 @@ def recall_episodic(
     results.sort(key=lambda x: -x[0])
     ranked: list[dict[str, Any]] = []
     for rank, (_, item) in enumerate(results[:limit], start=1):
+        item["uri"] = _uri_for_hit_path(root, item["source_path"])
         item["schema_version"] = RECALL_HIT_SCHEMA
         item["channel"] = "episodic"
         # Default to untrusted: an unrecognised episodic type is third-party
@@ -538,6 +548,7 @@ def _recall_knowledge_via_backend(
             "schema_version": RECALL_HIT_SCHEMA,
             "channel": "knowledge",
             "rank": rank,
+            "uri": _uri_for_hit_path(repo_root(), p["file_path"]),
             "slug": h.slug,
             "title": h.title or p.get("title", h.slug),
             "type": p.get("type", p.get("category", "concept")),
@@ -624,6 +635,7 @@ def _recall_knowledge_with_context(
             "schema_version": RECALL_HIT_SCHEMA,
             "channel": "knowledge",
             "rank": rank,
+            "uri": _uri_for_hit_path(repo_root(), item["file_path"]),
             "slug": item["slug"],
             "title": item.get("title", item["slug"]),
             "type": item.get("type", item.get("category", "concept")),

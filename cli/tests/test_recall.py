@@ -83,6 +83,53 @@ def test_recall_knowledge_returns_results(kb_root):
     assert any(r["slug"] == "git-branching" for r in results)
 
 
+def test_native_knowledge_hit_has_canonical_uri(kb_root):
+    from knowledge_studio.recall import recall_knowledge
+
+    hit = next(
+        h for h in recall_knowledge("git branching")
+        if h["slug"] == "git-branching"
+    )
+
+    assert hit["uri"] == "oks://wiki/computing/concepts/git-branching.md"
+    assert hit["schema_version"] == "recall-hit/v1"
+
+
+def test_backend_knowledge_hit_has_canonical_uri_and_preserves_ranking(kb_root, monkeypatch):
+    from knowledge_studio import search
+    from knowledge_studio.recall import recall
+    from knowledge_studio.search import SearchHit
+    from knowledge_studio.store import list_wiki_pages
+
+    class FakeBackend:
+        def search(self, query, *, limit, scope, **kwargs):
+            return [
+                SearchHit("git-branching", "Git Branching Strategy", 4.25, "fake"),
+                SearchHit("docker-deployment", "Docker Container Deployment", 2.5, "fake"),
+            ][:limit]
+
+    monkeypatch.setattr(search, "get_backend", lambda name, root: FakeBackend())
+
+    pages = {page["slug"]: page for page in list_wiki_pages()}
+    expected_projection = [
+        ("git-branching", 4.25, round(float(pages["git-branching"]["score"]), 3)),
+        (
+            "docker-deployment",
+            2.5,
+            round(float(pages["docker-deployment"]["score"]), 3),
+        ),
+    ]
+    hits = recall("deployment", limit=2, goal="none", search_backend="fake")["knowledge"]
+
+    assert [(h["slug"], h["relevance"], h["score"]) for h in hits] == expected_projection
+    assert [h["rank"] for h in hits] == [1, 2]
+    assert [h["uri"] for h in hits] == [
+        "oks://wiki/computing/concepts/git-branching.md",
+        "oks://wiki/computing/concepts/docker-deployment.md",
+    ]
+    assert all(h["schema_version"] == "recall-hit/v1" for h in hits)
+
+
 def test_recall_knowledge_anti_pattern_boosted(kb_root):
     from knowledge_studio.recall import recall_knowledge
     results = recall_knowledge("deployment", limit=5)
@@ -384,6 +431,28 @@ def test_episodic_recall_never_leaks_other_identities(kb_root):
     assert any("mine.md" in path for path in scoped)
     assert not any("bob" in path for path in scoped)
     assert not any("theirs.md" in path for path in scoped)
+
+
+def test_raw_and_authorized_profile_hits_have_uri(kb_root):
+    from knowledge_studio.recall import recall_episodic
+
+    raw = kb_root / "raw" / "2026" / "08" / "21" / "articles" / "atomic.md"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text("atomic write", encoding="utf-8")
+    profile = kb_root / "profiles" / "users" / "alice" / "profile.md"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    profile.write_text("atomic write preference", encoding="utf-8")
+
+    hits = recall_episodic("atomic write", user_id="alice", limit=10)
+    by_path = {hit["source_path"]: hit for hit in hits}
+
+    assert by_path["raw/2026/08/21/articles/atomic.md"]["uri"] == (
+        "oks://raw/2026/08/21/articles/atomic.md"
+    )
+    assert by_path["profiles/users/alice/profile.md"]["uri"] == (
+        "oks://profiles/users/alice/profile.md"
+    )
+    assert all(hit["schema_version"] == "recall-hit/v1" for hit in hits)
 
 
 def test_profile_in_scope_matches_flat_and_nested_user_paths(tmp_path):
