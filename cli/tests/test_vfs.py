@@ -106,3 +106,14 @@ def test_uri_for_path_rejects_noncanonical_or_unsafe_paths(vfs_root, path):
     with pytest.raises(VfsError) as exc:
         VfsResolver(vfs_root).uri_for_path(path)
     assert exc.value.code == "PATH_NOT_EXPOSED"
+
+
+def test_uri_for_path_rejects_external_symlink_into_public_mount(vfs_root, tmp_path):
+    from knowledge_studio.vfs import VfsError, VfsResolver
+
+    external_link = tmp_path.parent / f"{tmp_path.name}-outside-link.md"
+    external_link.symlink_to(vfs_root / "wiki/computing/concepts/中文 页面.md")
+
+    with pytest.raises(VfsError) as exc:
+        VfsResolver(vfs_root).uri_for_path(external_link)
+    assert exc.value.code == "PATH_NOT_EXPOSED"

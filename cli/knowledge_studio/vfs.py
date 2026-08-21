@@ -142,14 +142,11 @@ class VfsResolver:
         try:
             raw_relative = candidate.relative_to(self.root.absolute())
         except ValueError:
-            raw_relative = None
-        if raw_relative is not None:
-            for part in raw_relative.parts:
-                if part in {"", ".", ".."} or "\x00" in part or "\\" in part:
-                    raise VfsError(
-                        "PATH_NOT_EXPOSED", "Physical path contains unsafe segments"
-                    )
-            self._reject_symlinks(self.root, raw_relative.parts)
+            raise VfsError("PATH_NOT_EXPOSED", "Physical path is outside public OKS scopes")
+        for part in raw_relative.parts:
+            if part in {"", ".", ".."} or "\x00" in part or "\\" in part:
+                raise VfsError("PATH_NOT_EXPOSED", "Physical path contains unsafe segments")
+        self._reject_symlinks(self.root, raw_relative.parts)
 
         candidate = candidate.resolve(strict=False)
         ordered = [MOUNTS["traces"]] + [
