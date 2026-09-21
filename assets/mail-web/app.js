@@ -477,7 +477,9 @@ function stepDetail(n) {
     meta.push(['投递原因', n.protocol.delivery_reason_label || n.protocol.delivery_reason || '—']);
     if (n.protocol.origin_session_id) meta.push(['发起 Session', n.protocol.origin_session_id]);
     if (n.protocol.origin_machine_id) meta.push(['发起机器', n.protocol.origin_machine_id]);
-    meta.push(['消息 ID', n.protocol.message_id]);
+    // 回执节点的 protocol 只有 {ack_of, ack_peer}，没有 message_id；不加兜底
+    // 会让 createTextNode(undefined) 把「undefined」当成消息 ID 显示出来。
+    meta.push(['消息 ID', n.protocol.message_id || '—']);
   }
   const steps = [];
   for (const item of n.delivery || []) {
@@ -1094,7 +1096,10 @@ function onNodeClick(n) {
   if (n.kind === 'relation-target') {
     const r = n.relation;
     if (n.targetPoint) {
-      const f = findPoint(n.targetPoint.id) || { p: n.targetPoint, dom: null, cl: null };
+      // `targetPoint` 已经是 findPoint() 的返回值 {dom, cl, p}。之前又把它当 id
+      // 传回 findPoint()，拿到的必然是 undefined，于是回退分支把包装对象当成
+      // 知识点交给 pointDetail()，在 `p.relations.length` 处抛错、抽屉直接空白。
+      const f = n.targetPoint;
       state.path = [state.path[0], state.path[1], f.p.id];
       state.selPoint = f.p;
       drawGraph();
@@ -1118,7 +1123,17 @@ function clusterDetail(cl, domId) {
     badges: [{ label: `${dom ? dom.label : domId}`, tone: 'cross' }, { label: `${cl.count} 个知识点`, tone: 'wait' }],
     summary: `位于知识域「${dom ? dom.label : domId}」下的知识簇，由条目的 frontmatter 标签推导。`,
     meta: [['知识簇来源', cl.points[0] ? cl.points[0].cluster_source : '—']],
-    relations: cl.points.slice(0, 8).map((p) => ({ type: 'related', type_label: p.kind_label, target: p.title, target_title: p.title, source_label: p.status_label })),
+    // 这两个字段在「相关知识」里分别回答「这是一条什么关系」和「它从哪来」。
+    // 之前塞的是条目的类型与审核状态，渲染出来成了「关系类型＝已审核 Wiki、
+    // 来源＝可复用」——关系类型的位置放了条目类型，来源的位置放了审核状态。
+    relations: cl.points.slice(0, 8).map((p) => ({
+      type: 'related',
+      type_label: '同簇成员',
+      color_key: 'related',
+      target: p.title,
+      target_title: p.title,
+      source_label: `${p.kind_label} · ${p.status_label}`,
+    })),
     actions: [{ label: '展开第一个知识点', onClick: () => { state.path = [domId, cl.id, cl.points[0].id]; drawGraph(); showDetail(pointDetail(cl.points[0])); } }],
     footnote: '知识簇只是分组视图；它不改变任何知识条目的治理状态。',
   };
@@ -1249,22 +1264,26 @@ function renderGovernance(km) {
   // 阶段边界（允许做什么 / 明确不做）属于维护者口径，默认收在展开说明里，
   // 不占用普通读者的第一眼阅读路径。功能性的类型计数与可插拔清单仍留在 card 上。
   const sb = g.skill_boundary;
-  const policy = $('govPolicy') || box;
+  // #govBody 每轮都被 replaceChildren() 清空，独立的折叠容器 #govPolicy 没有：
+  // 不清它，「本阶段允许 / 明确不做」两段会随着每次轮询不停地叠加下去。
+  const policy = $('govPolicy');
+  if (policy) policy.replaceChildren();
+  const host = policy || box;
   if (sb && typeof sb === 'object') {
     if (Array.isArray(sb.allowed) && sb.allowed.length) {
-      policy.appendChild(el('div', 'detail-rel-title', '本阶段允许'));
+      host.appendChild(el('div', 'detail-rel-title', '本阶段允许'));
       const ul = el('ul', 'gov-list');
       for (const item of sb.allowed) ul.appendChild(el('li', null, item));
-      policy.appendChild(ul);
+      host.appendChild(ul);
     }
     if (Array.isArray(sb.not_done) && sb.not_done.length) {
-      policy.appendChild(el('div', 'detail-rel-title', '明确不做'));
+      host.appendChild(el('div', 'detail-rel-title', '明确不做'));
       const ul = el('ul', 'gov-list');
       for (const item of sb.not_done) ul.appendChild(el('li', null, item));
-      policy.appendChild(ul);
+      host.appendChild(ul);
     }
-    if (sb.next_gate) policy.appendChild(el('p', 'muted small', sb.next_gate));
-  } else if (typeof sb === 'string' && sb) policy.appendChild(el('p', 'muted small', sb));
+    if (sb.next_gate) host.appendChild(el('p', 'muted small', sb.next_gate));
+  } else if (typeof sb === 'string' && sb) host.appendChild(el('p', 'muted small', sb));
   const c = km.counts || {};
   const t = (g.toggle && g.toggle.counts) || {};
   $('govCounts').textContent = `${t.enabled ?? 0} 启用 · ${t.disabled ?? 0} 停用`;
