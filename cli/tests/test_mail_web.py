@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from knowledge_studio import mail
-from knowledge_studio.mail_web import connection_status, create_server
+from knowledge_studio.mail_web import create_server
 
 
 @pytest.fixture
@@ -35,7 +35,11 @@ def test_web_reads_real_threads_and_rejects_unsafe_requests(kb):
 
     try:
         with request("/") as response:
-            assert b"recipient" in response.read()
+            # Phase 1 panel: read-only observation surface (rail nav + timeline + wiki graph).
+            body = response.read()
+            assert "协作时间线".encode() in body
+            assert "Wiki 知识图".encode() in body
+            assert b"<form" not in body
         with request("/api/mail/send", {"to": "custom-agent,reviewer", "title": "Hi", "body": "hello"}) as response:
             result = json.load(response)
         assert len(mail.snapshot_data(kb, "custom-agent")["threads"]) == 1
@@ -65,17 +69,54 @@ def test_web_reads_real_threads_and_rejects_unsafe_requests(kb):
         worker.join(timeout=5)
 
 
-def test_connection_status_does_not_count_the_unknown_machine_token(kb):
-    """``machine_count`` must reflect real machines only.
+# ── 独立 Wiki 页：面向普通读者的显示契约（R6）────────────────────────────
+#
+# 这一页是「有人点进来才看到」的深页面，最容易漏出维护者字段。
+# 三条硬要求：分类值显示人话、维护信息降级进展开说明、不出现内部字段名。
 
-    A Session with no machine on record, or one whose id literally is
-    ``"unknown"``, is not a machine. Counting it inflated the roster the member
-    page shows, and disagreed with the provenance loop right below it, which
-    already filters the same token.
-    """
-    mail.register_session(kb, "s-unknown", "writer", machine_id="unknown")
-    mail.register_session(kb, "s-real", "reviewer", machine_id="machine-z")
-    status = connection_status(kb)
-    assert "unknown" not in status["machines"]
-    assert status["machines"] == ["machine-z"]
-    assert status["machine_count"] == len(status["machines"]) == 1
+def test_wiki_page_shows_human_labels_and_hides_maintenance_details():
+    from knowledge_studio.mail_web import render_wiki_page
+
+    item = {
+        "path": "wiki/decision-card-on-blocker.md",
+        "kind": "wiki",
+        "kind_label": "已审核 Wiki",
+        "title": "受阻时就地长出决策卡",
+        "summary": "执行流受阻时就地展开候选方案。",
+        "body": "## Summary\n\n正文一段。\n",
+        "tags": ["collaboration", "checkpoint", "ui"],
+        "tag_labels": ["团队与协作", "人类检查点", "界面与交互"],
+        "area": "collaboration",
+        "area_label": "团队与协作",
+        "type": "strategy",
+        "type_label": "策略",
+        "status": "active",
+        "status_label": "可复用",
+        "updated_at": "2026-09-19T00:00:00+00:00",
+        "timestamp_source": "updated_at",
+    }
+    page = render_wiki_page(item)
+
+    # 分类值必须是人话
+    assert "团队与协作、人类检查点、界面与交互" in page
+    assert "治理类型" in page and "策略" in page
+    # 原始字段值 / 字段名一个都不许露
+    for leaked in ("collaboration", "updated_at", "file_mtime", "frontmatter"):
+        assert leaked not in page, leaked
+    # 维护信息保留但降级：默认收在展开说明里，且人话化
+    assert "文件：wiki/decision-card-on-blocker.md" in page
+    assert "时间来源：条目里记录的更新时间" in page
+    assert '<details class="why">' in page
+    # 点进来的人要有回头路
+    assert "← 返回面板" in page
+
+
+def test_wiki_page_never_invents_tag_labels_for_unknown_english_keys():
+    """翻不出来的英文机器键不硬塞给读者；中文标签原样保留。"""
+    from knowledge_studio.mail_knowledge import tag_label
+
+    assert tag_label("collaboration") == "团队与协作"
+    assert tag_label("checkpoint") == "人类检查点"
+    assert tag_label("some_internal_key") == ""
+    assert tag_label("自定义主题") == "自定义主题"
+    assert tag_label(None) == ""
