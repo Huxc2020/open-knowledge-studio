@@ -680,24 +680,44 @@ function buildGraphModel(domains, path) {
   const dotColor = (p) => cvar(p.kind === 'wiki' ? '--n-blue' : '--n-orange');
 
   if (path.length === 0) {
-    nodes.push(center('OKS 知识库', state.knowledge.counts.points, '--brand'));
+    const km = state.knowledge;
+    nodes.push(center('OKS 知识库', km.counts.points, '--brand'));
+    // 主视图画的是关系网：知识点直接挂在知识域下，知识簇降为点的副标签、
+    // 不再单独占一层。之前那条「簇 → 点」的线还借用了第一条关系的颜色，
+    // 于是层级线看起来也像知识关系 —— 现在层级线统一用 __group，不带关系色键。
+    const nodeIdOf = new Map();
     domains.forEach((d, i) => {
       nodes.push({ id: d.id, label: d.label, count: d.count, color: colorOfDomain(i), level: 1, kind: 'domain', sub: `${d.clusters.length} 组` });
-      edges.push({ from: '__center', to: d.id, color: colorOfDomain(i), relKey: 'related' });
-      if (state.depth >= 2) {
-        d.clusters.forEach((c, j) => {
-          nodes.push({ id: `${d.id}::${c.id}`, label: c.label, count: c.count, color: colorOfDomain(i), level: 2, kind: 'cluster', parent: d.id, sub: '知识簇' });
-          edges.push({ from: d.id, to: `${d.id}::${c.id}`, color: colorOfDomain(i), relKey: 'related' });
-          if (state.depth >= 3) {
-            c.points.forEach((p, k) => {
-              nodes.push({ id: `${d.id}::${c.id}::${p.id}`, label: p.title, count: null, color: dotColor(p), level: 3, kind: 'point', parent: `${d.id}::${c.id}`, point: p });
-              edges.push({ from: `${d.id}::${c.id}`, to: `${d.id}::${c.id}::${p.id}`, color: dotColor(p), relKey: p.relations[0] ? p.relations[0].color_key : 'related' });
-            });
-          }
+      // 分组联线只说明「这点属于这个域」，不是知识关系：带上关系色键的话，
+      // 图例里关掉某一类关系会连层级线一起关掉。
+      edges.push({ from: '__center', to: d.id, color: colorOfDomain(i), relKey: '__group' });
+      if (state.depth < 2) return;
+      d.clusters.forEach((c) => {
+        c.points.forEach((p) => {
+          const id = `${d.id}::${c.id}::${p.id}`;
+          nodeIdOf.set(p.path, id);
+          nodes.push({ id, label: p.title, count: null, color: dotColor(p), level: 2, kind: 'point', parent: d.id, point: p, sub: c.label });
+          edges.push({ from: d.id, to: id, color: dotColor(p), relKey: '__group' });
         });
-      }
+      });
     });
-    return { nodes, edges };
+    // 真正的知识关系。无向去重（同一条边只留一条）已在后端做完，
+    // 这里只补同一对节点之间存在多条关系时所需的错开序号。
+    const seenPair = new Map();
+    for (const e of km.edges || []) {
+      const from = nodeIdOf.get(e.a), to = nodeIdOf.get(e.b);
+      if (!from || !to) continue;
+      const pairKey = from < to ? `${from}|${to}` : `${to}|${from}`;
+      const nth = seenPair.get(pairKey) || 0;
+      seenPair.set(pairKey, nth + 1);
+      edges.push({
+        from, to, nth,
+        color: cvar(REL_COLORS[e.color_key] || '--n-slate'),
+        relKey: e.color_key || 'related',
+        relation: e,
+      });
+    }
+    return { nodes, edges, groups: domains.map((d, i) => ({ id: d.id, color: colorOfDomain(i) })) };
   }
 
   const dom = domains.find((d) => d.id === path[0]);
@@ -707,11 +727,11 @@ function buildGraphModel(domains, path) {
     nodes.push(center(dom.label, dom.count, '--brand'));
     dom.clusters.forEach((c, j) => {
       nodes.push({ id: `${dom.id}::${c.id}`, label: c.label, count: c.count, color: colorOfDomain(j), level: 1, kind: 'cluster', sub: '知识簇' });
-      edges.push({ from: '__center', to: `${dom.id}::${c.id}`, color: colorOfDomain(j), relKey: 'related' });
+      edges.push({ from: '__center', to: `${dom.id}::${c.id}`, color: colorOfDomain(j), relKey: '__group' });
       if (state.depth >= 2) {
         c.points.forEach((p) => {
           nodes.push({ id: `${dom.id}::${c.id}::${p.id}`, label: p.title, count: null, color: dotColor(p), level: 2, kind: 'point', parent: `${dom.id}::${c.id}`, point: p });
-          edges.push({ from: `${dom.id}::${c.id}`, to: `${dom.id}::${c.id}::${p.id}`, color: dotColor(p), relKey: 'related' });
+          edges.push({ from: `${dom.id}::${c.id}`, to: `${dom.id}::${c.id}::${p.id}`, color: dotColor(p), relKey: '__group' });
         });
       }
     });
@@ -725,7 +745,7 @@ function buildGraphModel(domains, path) {
     cl.points.forEach((p, i) => {
       const key = `${dom.id}::${cl.id}::${p.id}`;
       nodes.push({ id: key, label: p.title, count: null, color: colorOfDomain(i), level: 1, kind: 'point', point: p, sub: p.kind_label });
-      edges.push({ from: '__center', to: key, color: colorOfDomain(i), relKey: p.relations[0] ? p.relations[0].color_key : 'related' });
+      edges.push({ from: '__center', to: key, color: colorOfDomain(i), relKey: '__group' });
       if (state.depth >= 2) {
         p.relations.forEach((r, ri) => {
           const rid = `${key}::rel::${ri}`;
@@ -926,6 +946,38 @@ function fitNodeWidths(svg) {
     if (label && !isCenter) label.setAttribute('x', -width / 2 + 13);
   });
 }
+/* 域分组色块：把属于同一个知识域的点圈在一起，压在最底层 ——
+   它是分组提示，不能盖住连线与节点，所以算完真实节点框再插到 g 的最前面。 */
+function drawDomainBlocks(g, model) {
+  const groups = model.groups || [];
+  if (!groups.length) return;
+  const boxes = new Map();
+  for (const n of model.nodes) {
+    if (n.x == null) continue;
+    const owner = n.kind === 'domain' ? n.id : (n.kind === 'point' ? n.parent : null);
+    if (!owner) continue;
+    const b = nodeBox(n);
+    const cur = boxes.get(owner) || { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    cur.minX = Math.min(cur.minX, n.x - b.w / 2);
+    cur.maxX = Math.max(cur.maxX, n.x + b.w / 2);
+    cur.minY = Math.min(cur.minY, n.y - b.h / 2);
+    cur.maxY = Math.max(cur.maxY, n.y + b.h / 2);
+    boxes.set(owner, cur);
+  }
+  const layer = svgEl('g', { class: 'gn-blocks' });
+  const pad = 26;
+  for (const grp of groups) {
+    const box = boxes.get(grp.id);
+    if (!box || !isFinite(box.minX)) continue;
+    layer.appendChild(svgEl('rect', {
+      x: box.minX - pad, y: box.minY - pad,
+      width: box.maxX - box.minX + pad * 2,
+      height: box.maxY - box.minY + pad * 2,
+      rx: 22, class: 'gn-block', fill: grp.color,
+    }));
+  }
+  if (layer.childNodes.length) g.insertBefore(layer, g.firstChild);
+}
 function renderSvg(model, svg, stage, opts = {}) {
   const w = Math.max(stage.clientWidth, 640), h = Math.max(stage.clientHeight, 420);
   svg.replaceChildren();
@@ -941,13 +993,19 @@ function renderSvg(model, svg, stage, opts = {}) {
     if (!a || !b || a.x == null || b.x == null || isHidden(b)) continue;
     const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     const dx = b.x - a.x, dy = b.y - a.y;
-    const nx = -dy * 0.1, ny = dx * 0.1;
+    // 同一对节点之间可能有多条不同关系（例如既「对比」又「相关」）。
+    // 曲率只跟点对有关的话它们会完全重合、只看得见一条，于是按序号左右错开。
+    const nth = e.nth || 0;
+    const bow = 0.1 + Math.floor(nth / 2) * 0.18;
+    const dir = nth % 2 ? -1 : 1;
+    const nx = -dy * bow * dir, ny = dx * bow * dir;
+    const isGroup = e.relKey === '__group';
     const path = svgEl('path', {
       d: `M ${a.x} ${a.y} Q ${mx + nx} ${my + ny} ${b.x} ${b.y}`,
-      class: 'graph-edge',
+      class: 'graph-edge' + (isGroup ? ' group' : ' relation'),
       stroke: e.color,
-      'stroke-width': a.level === 0 ? 1.8 : 1.2,
-      opacity: a.level === 0 ? 0.55 : 0.4,
+      'stroke-width': a.level === 0 ? 1.8 : (isGroup ? 1.1 : 1.5),
+      opacity: a.level === 0 ? 0.55 : (isGroup ? 0.32 : 0.62),
       'data-from': e.from, 'data-to': e.to,
     });
     g.appendChild(path);
@@ -1000,6 +1058,7 @@ function renderSvg(model, svg, stage, opts = {}) {
   g.appendChild(zoomG);
   svg.appendChild(g);
   fitNodeWidths(svg);
+  drawDomainBlocks(g, model);
   svg.setAttribute('viewBox', contentViewBox(model, w, h));
   bindPan(svg);
   // 只有聚焦图点空白才「退上一层」；全局图常驻，点它不该改变路径。
