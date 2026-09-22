@@ -402,6 +402,16 @@ function showDetail(model) {
     meta.appendChild(el('dd', null, v));
   }
   meta.hidden = !(model.meta || []).length;
+  // 诊断信息：默认收起，不参与第一眼阅读路径。
+  const diag = $('detailDiag');
+  diag.replaceChildren();
+  for (const [k, v] of model.diag || []) {
+    diag.appendChild(el('dt', null, k));
+    diag.appendChild(el('dd', null, v));
+  }
+  const diagWrap = $('detailDiagWrap');
+  diagWrap.open = false;
+  diagWrap.hidden = !(model.diag || []).length;
   const relBox = $('detailRelations');
   relBox.replaceChildren();
   if ((model.relations || []).length) {
@@ -446,20 +456,25 @@ function closeDetail() {
 function stepDetail(n) {
   const d = (n.delivery || [])[0] || null;
   const meta = [];
+  const diag = [];
   meta.push(['发生时间', fmtTime(n.time, true)]);
   if (n.thread && n.thread.title) meta.push(['所属 Thread', n.thread.title]);
   if (d) meta.push(['投递对象', `${d.peer_label || d.peer} · ${d.state_label || d.state}`]);
-  if ((n.sessions || []).length) meta.push(['Session', n.sessions.join('、')]);
-  if ((n.machines || []).length) meta.push(['机器来源', n.machines.join('、')]);
-  if ((n.evidence_refs || []).length) meta.push(['关联知识', n.evidence_refs.map((r) => r.path || r.id || '').join('、')]);
   if (n.protocol) {
     meta.push(['协作动作', `${n.protocol.record_kind_label || n.protocol.record_kind || '—'}`]);
     meta.push(['投递原因', n.protocol.delivery_reason_label || n.protocol.delivery_reason || '—']);
-    if (n.protocol.origin_session_id) meta.push(['发起 Session', n.protocol.origin_session_id]);
-    if (n.protocol.origin_machine_id) meta.push(['发起机器', n.protocol.origin_machine_id]);
+  }
+  // 内部 id、机器名、计数进诊断区：它们是排障者的材料，不是策展人判断
+  // 「这段协作怎么样了」的材料。放默认路径上只会稀释那个判断。
+  if ((n.sessions || []).length) diag.push(['Session', n.sessions.join('、')]);
+  if ((n.machines || []).length) diag.push(['机器来源', n.machines.join('、')]);
+  if ((n.evidence_refs || []).length) diag.push(['关联知识', n.evidence_refs.map((r) => r.path || r.id || '').join('、')]);
+  if (n.protocol) {
+    if (n.protocol.origin_session_id) diag.push(['发起 Session', n.protocol.origin_session_id]);
+    if (n.protocol.origin_machine_id) diag.push(['发起机器', n.protocol.origin_machine_id]);
     // 回执节点的 protocol 只有 {ack_of, ack_peer}，没有 message_id；不加兜底
     // 会让 createTextNode(undefined) 把「undefined」当成消息 ID 显示出来。
-    meta.push(['消息 ID', n.protocol.message_id || '—']);
+    diag.push(['消息 ID', n.protocol.message_id || '—']);
   }
   const steps = [];
   for (const item of n.delivery || []) {
@@ -483,6 +498,7 @@ function stepDetail(n) {
     summary: n.excerpt ? `「${n.excerpt}」` : '',
     body: steps.length ? '回执轨迹：\n' + steps.join('\n') : '',
     meta, relations: [],
+    diag,
     actions,
     footnote: '详情来自本机 Mail 文件。「已确认收到」只代表对方确认读到，不等于事情已办妥。',
   };
@@ -1123,17 +1139,22 @@ function pointDetail(p) {
   const enabled = gov.enabled !== false;
   const meta = [
     ['类型', p.kind_label],
-    ['路径', p.path],
     ['审核状态', p.status_label],
     ['最近更新', `${fmtTime(p.updated_at, true)}（来源：${p.timestamp_source_label || '记录时间'}）`],
   ];
   if (gov.type_label) meta.push(['治理类型', `${gov.type_label}${gov.type_question ? `（${gov.type_question}）` : ''}`]);
-  meta.push(['enabled 标记', enabled ? 'true' : 'false']);
   if (p.skill) meta.push(['Skill 状态', p.skill.label + (p.skill.source ? `（依据：${p.skill.source}）` : '')]);
   if (Array.isArray(p.tag_labels) && p.tag_labels.length) meta.push(['标签', p.tag_labels.join('、')]);
+  // 走诊断区的是：库内绝对路径、当前没有消费方的治理位、以及两个计数。
+  // 「最近更新（来源：…）」留在默认路径上 —— 来源标签是这个产品「如实呈现」的可核对证据，
+  // 正是它区别于「AI 编一张好看的图」，不能跟 id 与计数一起被收走。
   const srcCount = Array.isArray(p.wiki_refs) ? p.wiki_refs.length : 0;
-  meta.push(['关联知识', `${p.relations.length} 条`]);
-  meta.push(['Wiki 引用', `${srcCount} 处`]);
+  const diag = [
+    ['路径', p.path],
+    ['enabled 标记', enabled ? 'true' : 'false'],
+    ['关联知识', `${p.relations.length} 条`],
+    ['Wiki 引用', `${srcCount} 处`],
+  ];
   const href = `/api/mail/wiki-page?path=${encodeURIComponent(p.path)}`;
   return {
     kind: p.kind_label, title: p.title,
@@ -1152,6 +1173,7 @@ function pointDetail(p) {
       note: '知识库文件 frontmatter 里的 enabled 位。面板只读展示、不改写；当前版本没有任何模块读取这个位。',
     },
     meta,
+    diag,
     relations: p.relations,
     actions: [
       { label: '在完整 Wiki 中打开 ↗', primary: true, href },

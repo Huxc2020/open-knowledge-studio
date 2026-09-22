@@ -161,6 +161,8 @@ small{font-size:11.5px}
 .why[open]>summary::before{transform:rotate(90deg)}
 .why[open]>summary{color:var(--text)}
 .why>p,.why>div{margin:0;padding:0 10px 10px}
+/* 诊断区：里的 dl 沿用 .detail-meta 排版，只补上下留白 */
+.diag>dl{margin:0;padding:0 10px 10px}
 .ev-group{margin-top:8px;display:flex;flex-direction:column;gap:3px}
 .ev-group-title{font-size:11px;color:var(--dim)}
 .stage-ev-item{font-size:11px;color:var(--muted);background:var(--soft);border-radius:7px;padding:3px 7px}

@@ -206,6 +206,12 @@
       <div class="detail-plug" id="detailPlug" hidden></div>
       <div class="detail-rel" id="detailRelations" hidden></div>
       <div class="detail-actions" id="detailActions"></div>
+      <!-- 排查信息默认收起：它服务的是另一类读者（排障/开发者）。
+           普通读者要判断的是「这段协作怎么样了」，id 与计数只会稀释那个判断。 -->
+      <details class="why diag" id="detailDiagWrap" hidden>
+        <summary>诊断信息（排查用，不影响上面的结论）</summary>
+        <dl class="detail-meta" id="detailDiag"></dl>
+      </details>
       <p class="muted small" id="detailFootnote"></p>
     </aside>
   </div>
