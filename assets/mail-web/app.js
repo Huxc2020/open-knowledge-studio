@@ -1284,14 +1284,14 @@ function renderGovernance(km) {
     if (sb.next_gate) host.appendChild(el('p', 'muted small', sb.next_gate));
   } else if (typeof sb === 'string' && sb) host.appendChild(el('p', 'muted small', sb));
   const c = km.counts || {};
-  const t = (g.toggle && g.toggle.counts) || {};
+  const t = (g.enabled_state && g.enabled_state.counts) || {};
   $('govCounts').textContent = `${t.enabled ?? 0} 启用 · ${t.disabled ?? 0} 停用`;
-  $('govNote').textContent = `${g.note || ''} 三分类只是治理属性，不参与图谱分组。Skill 候选 ${c.skill_candidates ?? 0} 条 · 已成包 ${c.skill_packaged ?? 0} 条。面板不做安装、发布或打包；唯一的写入就是启用 / 停用这个治理位（写前备份、原子替换）。`;
+  $('govNote').textContent = `${g.note || ''} 三分类只是治理属性，不参与图谱分组。Skill 候选 ${c.skill_candidates ?? 0} 条 · 已成包 ${c.skill_packaged ?? 0} 条。面板不做安装、发布或打包，也不改写知识库文件。`;
 }
 
 /* ── 启动 ── */
 /* ── 实时更新：短轮询 ──
-   面板不是静态只读快照：Agent 写了 Mail、审核改了 Wiki、治理开关动了，
+   面板读的是库里的文件，文件会变：Agent 写了 Mail、审核改了 Wiki，
    这里要在几秒内跟上。只重渲染「真的变了」的那一块，避免每轮都闪一次。
    诚实边界：这只是本机文件轮询，不表示任何 Agent 在线，也不代表远端实时。 */
 const POLL_MS = 5000;

@@ -536,7 +536,7 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
                 "知识图只是把 Wiki 里已经写好的关系画出来，不新增任何知识。"
                 "最外圈是知识域，中间是知识簇，最里面每一条都是一份已审核的 Wiki 或候选条目。"
                 "每条连线都标了来源。这里不含原始素材，也不含 Agent 的执行过程。"
-                "图本身不写入任何东西；能动的只有治理层的启用 / 停用开关。"
+                "图本身不写入任何东西；治理位也只展示，不在这里改。"
             ),
             "level_sources": ["条目自己声明的所属领域", "条目的首个标签", "一份已审核的 Wiki 或候选条目"],
         },
@@ -595,11 +595,10 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
             "pluggable": pluggable,
             "unclassified": unclassified,
             "skill_boundary": SKILL_BOUNDARY,
-            "toggle": {
-                "endpoint": "/api/mail/knowledge/toggle",
+            # 面板是只读观察面：这里只报计数，不再携带任何写端点 / 写保证。
+            # 密钥名从 toggle 改掉，是因为它现在既不是「开关」也没有「切换」动作。
+            "enabled_state": {
                 "field": TOGGLE_FIELD,
-                "writes": "只改这一个开关位；正文与其他字段原样不动",
-                "safety": f"写前整字节备份到 {BACKUP_DIR.as_posix()}/，再用临时文件原子替换",
                 "counts": {
                     "enabled": sum(1 for point in kept if point["governance"]["enabled"]),
                     "disabled": sum(1 for point in kept if not point["governance"]["enabled"]),
