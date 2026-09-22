@@ -331,41 +331,17 @@ function selectStep(n, li) {
 }
 
 /* ── 详情面板 ── */
-/* 可插拔：治理层的启用 / 停用开关。这是面板唯一的写入路径，
-   写的是 frontmatter 的 enabled 布尔位，不碰正文与其他字段。 */
-function plugRow(t) {
-  const row = el('label', 'plug-row');
-  const input = el('input');
-  input.type = 'checkbox';
-  input.checked = !!t.enabled;
-  input.dataset.path = t.path;
-  input.setAttribute('aria-label', `${t.enabled ? '停用' : '启用'} ${t.path}`);
-  input.addEventListener('change', () => setEnabled(t.path, input.checked));
-  row.appendChild(input);
-  row.appendChild(el('span', 'plug-switch'));
+/* 只读：治理位只展示，面板不写入。
+   原先这里有一个启用 / 停用开关，配 /api/mail/knowledge/toggle 写回知识库文件。
+   2026-09-22 移除：那个位当时没有任何模块读取，界面却据此声称「不再被 Skill 层启用」，
+   是在许诺一个没实现的下游效果。要改文件，走知识库与人的流程，不经这个只读面板。 */
+function govStateRow(t) {
+  const row = el('div', 'plug-state');
   const text = el('span', 'plug-text');
   text.appendChild(el('b', null, t.enabled ? '已启用' : '已停用'));
   text.appendChild(el('small', null, t.note || ''));
   row.appendChild(text);
   return row;
-}
-async function setEnabled(path, enabled) {
-  try {
-    const res = await fetch('/api/mail/knowledge/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, enabled }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    toast(`${enabled ? '已启用' : '已停用'} ${path}；原文件已备份到 ${data.backup || '—'}`);
-    await refreshKnowledge();
-    const found = findPoint(path);
-    if (found) showDetail(pointDetail(found.p));
-  } catch (err) {
-    toast('写入失败：' + err.message);
-    await refreshKnowledge();
-  }
 }
 async function refreshKnowledge() {
   try {
@@ -409,9 +385,9 @@ function showDetail(model) {
   }
   const plug = $('detailPlug');
   plug.replaceChildren();
-  if (model.toggle) {
+  if (model.govState) {
     plug.hidden = false;
-    plug.appendChild(plugRow(model.toggle));
+    plug.appendChild(govStateRow(model.govState));
   } else {
     plug.hidden = true;
   }
@@ -1148,7 +1124,7 @@ function pointDetail(p) {
     ['最近更新', `${fmtTime(p.updated_at, true)}（来源：${p.timestamp_source_label || '记录时间'}）`],
   ];
   if (gov.type_label) meta.push(['治理类型', `${gov.type_label}${gov.type_question ? `（${gov.type_question}）` : ''}`]);
-  meta.push(['治理开关', enabled ? '已启用（可插拔）' : '已停用（可插拔）']);
+  meta.push(['enabled 标记', enabled ? 'true' : 'false']);
   if (p.skill) meta.push(['Skill 状态', p.skill.label + (p.skill.source ? `（依据：${p.skill.source}）` : '')]);
   if (Array.isArray(p.tag_labels) && p.tag_labels.length) meta.push(['标签', p.tag_labels.join('、')]);
   const srcCount = Array.isArray(p.wiki_refs) ? p.wiki_refs.length : 0;
@@ -1166,10 +1142,10 @@ function pointDetail(p) {
     summary: p.summary || '',
     body: p.body || '',
     embedPath: p.path,
-    toggle: {
+    govState: {
       path: p.path,
       enabled,
-      note: `写 frontmatter 的 enabled 位；正文与其他字段不动。停用后这条知识仍留在库里，只是不再被 Skill 层启用。`,
+      note: '知识库文件 frontmatter 里的 enabled 位。面板只读展示、不改写；当前版本没有任何模块读取这个位。',
     },
     meta,
     relations: p.relations,
@@ -1178,7 +1154,7 @@ function pointDetail(p) {
       { label: '复制正文', onClick: () => copyText(p.body || p.summary || '', '知识正文已复制') },
       { label: '复制路径', onClick: () => copyText(p.path, `路径已复制：${p.path}`) },
     ],
-    footnote: '图谱与详情是只读投影，不替代 Wiki 本体。唯一可写的是上面的治理开关；正文的修改与审核仍在知识库与人的流程里完成。',
+    footnote: '图谱与详情是只读投影，不替代 Wiki 本体；这个面板不写任何文件。正文与治理状态的变更仍在知识库与人的流程里完成。',
   };
 }
 function nodeIndex() {
@@ -1236,26 +1212,23 @@ function renderGovernance(km) {
     const chip = el('span', 'gov-chip');
     chip.appendChild(document.createTextNode('未标注 '));
     chip.appendChild(el('em', null, String(g.unclassified)));
-    chip.title = '这些条目还没有治理分类，不参与可插拔';
+    chip.title = '这些条目还没有治理分类';
     types.appendChild(chip);
   }
   box.appendChild(types);
 
   const pluggable = g.pluggable || [];
   if (pluggable.length) {
-    box.appendChild(el('div', 'detail-rel-title', '可插拔清单（拨动开关即真实写盘）'));
+    box.appendChild(el('div', 'detail-rel-title', '可插拔清单（只读展示）'));
     const list = el('div', 'plug-list');
     for (const member of pluggable) {
       const row = el('div', 'plug-item');
       const left = el('button', 'plug-item-open');
       left.type = 'button';
       left.appendChild(el('b', null, member.title));
-      left.appendChild(el('small', null, `${member.kind_label} · ${member.enabled ? '启用中' : '已停用'}`));
+      left.appendChild(el('small', null, `${member.kind_label} · ${member.enabled ? 'enabled: true' : 'enabled: false'}`));
       left.addEventListener('click', () => { switchTab('knowledge'); locatePoint(member.path); });
       row.appendChild(left);
-      const holder = el('span', 'plug-item-switch');
-      holder.appendChild(plugRow({ path: member.path, enabled: member.enabled }));
-      row.appendChild(holder);
       list.appendChild(row);
     }
     box.appendChild(list);

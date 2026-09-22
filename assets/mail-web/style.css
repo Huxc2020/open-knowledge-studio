@@ -260,19 +260,8 @@ small{font-size:11.5px}
 .detail-actions a.ghost{border:1px solid var(--line);background:#fff;padding:6px 13px;font-size:12.5px;font-weight:600;border-radius:9999px}
 .detail-actions a.ghost:hover{background:var(--brand-soft);border-color:#c7d6ff;color:var(--brand)}
 
-/* ── 可插拔开关（治理层唯一写路径） ── */
-.plug-row{display:flex;align-items:center;gap:10px;cursor:pointer;padding:6px 0}
-.plug-row input{position:absolute;opacity:0;width:0;height:0}
-.plug-row .plug-switch{
-  flex:none;width:34px;height:19px;border-radius:20px;background:#cfd8e0;position:relative;transition:background .15s;
-}
-.plug-row .plug-switch::after{
-  content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;
-  box-shadow:0 1px 3px #0b1a2b33;transition:transform .15s;
-}
-.plug-row input:checked + .plug-switch{background:var(--ok)}
-.plug-row input:checked + .plug-switch::after{transform:translateX(15px)}
-.plug-row input:focus-visible + .plug-switch{outline:2.5px solid var(--brand);outline-offset:2px}
+/* ── 治理位展示（只读：面板不再有写路径） ── */
+.plug-state{display:flex;align-items:flex-start;gap:10px;padding:6px 0}
 .plug-text{display:flex;flex-direction:column;gap:1px;min-width:0}
 .plug-text b{font-size:12px}
 .plug-text small{color:var(--muted);font-size:11px;line-height:1.5}
@@ -285,8 +274,6 @@ small{font-size:11.5px}
 .plug-item-open b{font-size:12.5px;font-weight:600}
 .plug-item-open small{color:var(--muted);font-size:11px}
 .plug-item-open:hover b{color:var(--brand)}
-.plug-item-switch{flex:none}
-.plug-item-switch .plug-row{padding:0}
 
 /* 已停用的知识点在图上就要看得出来 */
 .graph-node.off rect{opacity:.5;stroke-dasharray:3 3}

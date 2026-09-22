@@ -867,27 +867,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(403, {'error': 'same-origin JSON requests required'})
             return
         route = self.path.split("?", 1)[0]
-        if route not in {"/api/mail/send", "/api/mail/reply", "/api/mail/invite", "/api/mail/read", "/api/mail/archive", "/api/mail/unarchive", "/api/mail/team/sync", "/api/mail/knowledge/toggle"}:
+        # 面板是只读观察面：这里不再有「改知识库文件」的写端点。
+        # `/api/mail/knowledge/toggle` 已于 2026-09-22 移除（它写的 enabled 位当时没有任何消费方，
+        # 界面却据此声称下游生效）。下面这些写端点都只操作 mail/ 协作记录，不碰 wiki/ 与 drafts/。
+        if route not in {"/api/mail/send", "/api/mail/reply", "/api/mail/invite", "/api/mail/read", "/api/mail/archive", "/api/mail/unarchive", "/api/mail/team/sync"}:
             self.send_error(404)
             return
         try:
             payload = self.read_json()
-            if route == "/api/mail/knowledge/toggle":
-                if "enabled" not in payload:
-                    raise ValueError("enabled 是必填的布尔值")
-                enabled = payload.get("enabled")
-                if not isinstance(enabled, bool):
-                    raise ValueError("enabled 必须是 true 或 false")
-                relative = str(payload.get("path", "")).strip()
-                if not relative:
-                    raise ValueError("path 是必填的知识路径")
-                try:
-                    result = mail_knowledge.set_enabled(self.server.kb_root, relative, enabled)
-                except FileNotFoundError as exc:
-                    self.send_json(404, {"error": str(exc)})
-                    return
-                self.send_json(200, result)
-                return
             if route == "/api/mail/team/sync":
                 result = team_sync.sync(
                     self.server.kb_root,

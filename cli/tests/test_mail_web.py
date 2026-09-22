@@ -1,5 +1,6 @@
 """HTTP contract tests for the real local Mail workspace."""
 import json
+import re
 import threading
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -120,3 +121,69 @@ def test_wiki_page_never_invents_tag_labels_for_unknown_english_keys():
     assert tag_label("some_internal_key") == ""
     assert tag_label("自定义主题") == "自定义主题"
     assert tag_label(None) == ""
+
+
+# ── 只读边界：面板不许有写路径（2026-09-22）─────────────────────────────
+#
+# 背景：面板原先有一个治理开关（裸 checkbox + change 即 POST /api/mail/knowledge/toggle），
+# 写的是 wiki/drafts 条目的 enabled 位。移除它有两个理由，都记在案：
+#   ① 那个位当时没有任何消费方（recall / store / skill / hook 都不读它），
+#      而界面据此声称「停用后不再被 Skill 层启用」—— 许诺了一个没实现的下游效果；
+#   ② 一个只读观察面不该是唯一能改写知识库文件的入口。
+# 这两条断言把这个边界钉住，防止它被悄悄加回来。
+
+def _served(base, route):
+    with urlopen(base + route, timeout=5) as response:
+        return response.read().decode("utf-8")
+
+
+def test_panel_serves_no_post_capable_control(kb):
+    """面板不能有任何会发 POST 的控件。
+
+    口径说明：判「是否只读」要数**发 POST 的请求**，不是数表单元素。
+    左栏的 showCounts / showSource 是视图开关，kmSearch 是筛选框 —— 数 form/input
+    会把它们误判成写控件；反过来，数表单元素也会漏掉一个裸 checkbox。
+    2026-09-22 那次「零写操作」结论就是这么假绿的：口径是「form 数为 0」，
+    而真正的写路径是一个 `input.type='checkbox'` + change 即 POST。
+    """
+    server = create_server(kb, 0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        script = _served(f"http://127.0.0.1:{server.server_port}", "/app.js")
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+    assert not re.search(r"method\s*:\s*['\"]POST['\"]", script, re.IGNORECASE), (
+        "面板是只读观察面，不应该发 POST"
+    )
+    assert "<form" not in script
+
+
+def test_removed_knowledge_toggle_route_fails_closed(kb):
+    """被移除的写端点必须 404，且目标文件一个字节都不许变。"""
+    target = kb / "wiki" / "a.md"
+    target.write_text("---\ntitle: A\n---\n\nbody\n", encoding="utf-8")
+    before = target.read_bytes()
+
+    server = create_server(kb, 0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        req = Request(
+            base + "/api/mail/knowledge/toggle",
+            data=json.dumps({"path": "wiki/a.md", "enabled": False}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(HTTPError) as error:
+            urlopen(req, timeout=5)
+        assert error.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+    assert target.read_bytes() == before, "写端点已移除，文件不应该被改动"

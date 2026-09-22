@@ -114,13 +114,12 @@ SKILL_BOUNDARY = {
         "Skill 通过 wiki_refs 引用已审核知识，不复制知识正文",
         "只有通过 Human Review 的 Wiki 条目可以作为引用来源",
         "概念 / 策略 / 反策略只用于 Skills 治理，不作 Wiki 分类",
-        "人可以在面板上把一条经验标为启用 / 停用（可插拔）；只改这一个开关位，正文不动",
     ],
     "not_done": [
         "不自动安装 Skill",
         "不自动发布或更新 Skill Package",
         "不做 Marketplace、不做复杂依赖解析",
-        "不由 Mail 消息自动改写 Wiki：启用 / 停用只接受人的显式点击",
+        "面板不做启用 / 停用：治理位只展示，不写盘",
     ],
     "next_gate": "Skill Candidate → Human Review → Skill Package 仍需人工判断。",
 }
@@ -610,12 +609,16 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
     }
 
 
-# ── 治理开关：本模块唯一的写入路径 ────────────────────────────────────
+# ── 治理位：库能力保留，面板不再有写路径 ──────────────────────────────
 #
-# 边界声明（Owner 2026-09-19 裁定）：
-#   * 知识图谱本身仍是只读投影 —— 这里不提供任何创建 / 删除 / 改正文的能力。
-#   * 「可插拔」指的是**治理位**：把一条已收录知识标记为 enabled / disabled，
-#     让 Skill 层可以按需启用。写的是一个布尔 frontmatter 字段，不是知识内容。
+# 边界变更（2026-09-22，取代 Owner 2026-09-19 的「面板唯一写路径」裁定）：
+#   * 原因：`enabled` 位当时**没有任何消费方** —— recall / store / skill / hook 都不读它，
+#     而面板文案据此声称「停用后不再被 Skill 层启用」，等于许诺一个没实现的下游效果。
+#     一个只读观察面也不该是唯一能改写知识库文件的入口。
+#   * 因此移除：面板的启用 / 停用开关、`/api/mail/knowledge/toggle` 路由，
+#     以及 SKILL_BOUNDARY 里与之对应的那条声明。
+#   * `set_enabled()` 保留为库能力（路径限于 wiki/ 与 drafts/、字节级备份、原子替换），
+#     但它当前**没有生产调用方**；将来若要暴露，必须走 CLI / Agent，而不是无鉴权的 HTTP 路由。
 #   * 每次写入前把原文件整字节备份到 <KB>/.oks/knowledge-backups/，
 #     再用临时文件 + os.replace 原子替换；失败不留下半截文件。
 #   * 没有 frontmatter 的条目直接拒绝，不做「帮你补一个」的猜测。
@@ -651,6 +654,10 @@ def _backup(root: Path, relative: str, payload: bytes) -> Path:
 
 def set_enabled(root: Path, relative: str, enabled: bool) -> dict:
     """Flip the governance ``enabled`` bit of one knowledge entry.
+
+    Kept as a library capability; since 2026-09-22 it has **no production caller** —
+    the panel's ``/api/mail/knowledge/toggle`` route was removed along with the UI
+    switch, because nothing in the system reads this bit.
 
     Raises ``FileNotFoundError`` for paths outside wiki/drafts and ``ValueError``
     when the file has no frontmatter block to write into.
