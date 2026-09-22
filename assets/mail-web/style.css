@@ -126,21 +126,31 @@ small{font-size:11.5px}
 
 /* ── 任务阶段阶梯：骨架固定，四阶段永远在位 ── */
 .stages{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
-.stage{display:flex;align-items:flex-start;gap:9px;flex:1 1 170px;min-width:0;
+.stage{display:flex;align-items:flex-start;gap:9px;flex:1 1 150px;min-width:0;
   padding:12px 13px;border:1px solid var(--line-soft);border-radius:11px;background:#fff}
 .stage-dot{width:10px;height:10px;border-radius:50%;flex:none;margin-top:5px;background:var(--line)}
-.stage.done .stage-dot{background:var(--ok)}
+/* 已完成：退成背景。读者要判断的是「停在哪」，不是「走过了哪」——
+   四张卡等宽等大时，已完成的那几格在跟真正要看的那一格抢同一份注意力。 */
+.stage.done{background:var(--soft);border-color:transparent}
+.stage.done .stage-dot{background:var(--ok);opacity:.5}
+.stage.done .stage-name{font-weight:500;color:var(--muted)}
+.stage.done .stage-lead,.stage.done .stage-time{color:var(--dim)}
 .stage.active .stage-dot{background:var(--brand)}
 .stage-main{min-width:0;flex:1}
 .stage-line{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
 .stage-name{font-weight:600;font-size:13px}
 .stage-status{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
 .stage.pending .stage-status{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
-.stage.done .stage-status{background:var(--okbg);color:var(--ok)}
+.stage.done .stage-status{background:var(--okbg);color:var(--ok);opacity:.8}
 .stage.active .stage-status{background:var(--brand-soft);color:var(--brand)}
 .stage-time{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums}
 .stage-sub{margin:5px 0 0;font-size:11.5px;color:var(--muted)}
 .stage-lead{margin:5px 0 0;font-size:11.5px;color:var(--muted);line-height:1.5}
+/* 当前这一步 = 第一个 status !== done 的阶段。只给尺寸与描边层级，不靠动画：
+   无头浏览器默认 prefers-reduced-motion: reduce，动效在静态视图里本来就不存在。 */
+.stage.frontier{flex:2 1 230px;border-color:#c7d6ff;box-shadow:0 0 0 3px #3b6ef51a}
+.stage.frontier .stage-name{font-size:15px}
+.stage.frontier .stage-lead{font-size:12px;color:var(--text)}
 /* 展开说明：诚实口径默认收起，不占首屏。原生 details，无脚本、可键盘操作。
    做成有底的块，而不是一行裸文字 —— 裸文字看着像正文的一部分，
    读者不会意识到「这里点得开」。 */
@@ -157,11 +167,11 @@ small{font-size:11.5px}
 .ev-thread{color:var(--dim);font-size:10px;font-variant-numeric:tabular-nums}
 .stage-arrow{align-self:center;color:var(--line);font-size:14px;flex:none;display:flex;flex-direction:column;align-items:center;gap:1px}
 .stage-gap{font-size:10px;font-weight:600;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
-/* 进行中：只给动效，不给假进度条。文案与时间仍然来自真实事件。 */
-.stage.active{border-color:#c7d6ff;box-shadow:0 0 0 3px #3b6ef50f}
-.stage.active .stage-dot{animation:stage-pulse 1.8s ease-in-out infinite}
+/* 脉冲只是锦上添花：只在允许动效时出现，「当前这一步」的可辨识度不依赖它。 */
+@media (prefers-reduced-motion:no-preference){
+  .stage.frontier .stage-dot{animation:stage-pulse 1.8s ease-in-out infinite}
+}
 @keyframes stage-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.35)}}
-@media (prefers-reduced-motion:reduce){.stage.active .stage-dot{animation:none}}
 
 /* ── 知识图 ── */
 .graph-card{min-height:0}

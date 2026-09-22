@@ -197,8 +197,12 @@ function renderStages() {
     box.appendChild(el('li', 'stage pending', '当前投影里还没有阶段信息。'));
     return;
   }
+  // 视觉权重只给「第一个还没完成的阶段」——这才是读者要判断的那一格（哪里停住了）。
+  // 注意这不是新状态：系统只有 done / active / pending 三种，没有「停滞」；
+  // 这里只是把既有状态里第一个非 done 的阶段挑出来加重，不引入任何时间阈值推断。
+  const frontierIdx = stages.findIndex((s) => (s.status || 'pending') !== 'done');
   stages.forEach((s, i) => {
-    const li = el('li', 'stage ' + (s.status || 'pending'));
+    const li = el('li', 'stage ' + (s.status || 'pending') + (i === frontierIdx ? ' frontier' : ''));
     li.appendChild(el('span', 'stage-dot', ''));
     const main = el('div', 'stage-main');
     const line = el('div', 'stage-line');
