@@ -1210,3 +1210,46 @@ def test_gate4_git_backed_two_clone_handoff_and_concurrent_merge(tmp_path, monke
     assert {"concurrent C result", "concurrent D result"}.issubset(bodies)
     assert len({item["meta"]["message_id"] for item in merged}) == 4
     assert reply_c["message_id"] != reply_d["message_id"]
+
+
+def test_cli_send_and_reply_expose_record_kind(monkeypatch, tmp_path):
+    """`--record-kind` reaches the stored frontmatter and the JSON result.
+
+    ``mail.write_message`` already classifies facts via ``normalise_record_kind``
+    (see ``test_record_kind_is_a_fact_classification_separate_from_delivery_reason``),
+    but the CLI had no way to set it, so every CLI-written message was silently
+    filed as ``message``.
+    """
+    from knowledge_studio import cli, mail
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    monkeypatch.setenv("OKS_AGENT_ID", "claude")
+    runner = CliRunner()
+
+    sent = runner.invoke(cli.app, [
+        "mail", "send", "--to", "@codex", "--body", "这一项被阻塞了", "--title", "Blocked",
+        "--record-kind", "blocked", "--format", "json",
+    ])
+    assert sent.exit_code == 0, sent.stdout
+    sent_data = json.loads(sent.stdout)
+    assert sent_data["record_kind"] == "blocked"
+    stored = next(m for m in mail.iter_messages(tmp_path) if m["meta"].get("message_id") == sent_data["message_id"])
+    assert stored["meta"]["record_kind"] == "blocked"
+
+    default = runner.invoke(cli.app, [
+        "mail", "send", "--to", "@codex", "--body", "普通消息", "--title", "Plain", "--format", "json",
+    ])
+    assert default.exit_code == 0, default.stdout
+    assert json.loads(default.stdout)["record_kind"] == "message"
+
+    monkeypatch.setenv("OKS_AGENT_ID", "codex")
+    replied = runner.invoke(cli.app, [
+        "mail", "reply", sent_data["thread_id"], "--body", "收到", "--record-kind", "result", "--format", "json",
+    ])
+    assert replied.exit_code == 0, replied.stdout
+    assert json.loads(replied.stdout)["record_kind"] == "result"
+
+    bad = runner.invoke(cli.app, [
+        "mail", "send", "--to", "@codex", "--body", "x", "--title", "Bad", "--record-kind", "not-a-kind",
+    ])
+    assert bad.exit_code == 2

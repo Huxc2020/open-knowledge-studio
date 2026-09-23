@@ -2698,6 +2698,7 @@ def _mail_action_result(result: dict[str, Any], *, sender_kind: str, notify: boo
         "recipients": [str(recipient) for recipient in result["recipients"]],
         "sender_kind": sender_kind,
         "origin_machine_id": str(result.get("meta", {}).get("origin_machine_id", "unknown")),
+        "record_kind": str(result.get("meta", {}).get("record_kind", "message")),
         "evidence_refs": result.get("evidence_refs", []),
         "attention": {
             "requested": notify,
@@ -2728,6 +2729,7 @@ def mail_send(
     thread: str = typer.Option("", "--thread", help="Existing Thread ID (for a reply)"),
     session_id: str = typer.Option("", "--session-id", help="Originating Agent session ID"),
     delivery_reason: str = typer.Option("direct", "--delivery-reason", help="direct | conflict | review_request | handoff | system"),
+    record_kind: str = typer.Option("message", "--record-kind", help="message | handoff | result | blocked | note | knowledge_ref"),
     notify: bool = typer.Option(False, "--notify/--no-notify", help="Request host notification; safe queued fallback when unsupported"),
     session_policy: str = typer.Option("next_prompt", "--session-policy", help="next_prompt | wait | notify"),
     sender_kind: str = typer.Option("", "--sender-kind", help="Message provenance: human | agent | unknown"),
@@ -2767,6 +2769,7 @@ def mail_send(
             origin_machine_id=mid,
             evidence_refs=refs,
             delivery_reason=delivery_reason,
+            record_kind=record_kind,
             notify=notify,
             session_policy=session_policy,
         )
@@ -2931,6 +2934,7 @@ def mail_reply(
     notify: bool = typer.Option(False, "--notify/--no-notify", help="Request host notification"),
     sender_kind: str = typer.Option("", "--sender-kind", help="Message provenance: human | agent | unknown"),
     evidence_ref: list[str] = typer.Option([], "--evidence-ref", help="Evidence ref JSON object; repeatable"),
+    record_kind: str = typer.Option("message", "--record-kind", help="message | handoff | result | blocked | note | knowledge_ref"),
     output_format: str = typer.Option("text", "--format", help="text | json"),
     path: Optional[str] = typer.Option(None, "--path", help="Instance root (default: active KB)"),
 ) -> None:
@@ -2978,6 +2982,7 @@ def mail_reply(
             origin_machine_id=mid,
             evidence_refs=refs,
             delivery_reason="thread_reply",
+            record_kind=record_kind,
             notify=notify,
             session_policy="notify" if notify else "next_prompt",
         )
