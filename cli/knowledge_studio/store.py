@@ -416,18 +416,28 @@ def _find_file_by_slug(slug: str) -> Path | None:
 
 
 def _update_frontmatter_field(file_path: Path, field: str, value) -> bool:
-    text = file_path.read_text(encoding="utf-8")
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return False
-    try:
-        meta = yaml.safe_load(parts[1].strip()) or {}
-    except yaml.YAMLError:
-        return False
-    meta[field] = value
-    new_fm = yaml.dump(meta, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    _atomic_write(file_path, f"---\n{new_fm}---\n{parts[2]}")
-    return True
+    """Set one frontmatter field under the target page's lock.
+
+    The whole file is rewritten, so the read/modify/write has to be atomic
+    against other writers. An unlocked caller reads a snapshot, and a concurrent
+    update that lands in between is silently dropped when that snapshot is
+    written back — two processes each touching a different field of the same
+    page would lose one another's change. ``record_access`` locks its own
+    read/modify/write the same way for the same reason.
+    """
+    with _file_lock(file_path.with_name(f".{file_path.name}.lock")):
+        text = file_path.read_text(encoding="utf-8")
+        parts = text.split("---", 2)
+        if len(parts) < 3:
+            return False
+        try:
+            meta = yaml.safe_load(parts[1].strip()) or {}
+        except yaml.YAMLError:
+            return False
+        meta[field] = value
+        new_fm = yaml.dump(meta, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        _atomic_write(file_path, f"---\n{new_fm}---\n{parts[2]}")
+        return True
 
 
 def _reinforce_on_reconfirmation(slug: str) -> None:
@@ -642,8 +652,14 @@ def write_wiki_page(
     fm_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True, sort_keys=False)
     _atomic_write(file_path, f"---\n{fm_str}---\n\n{content}")
 
-    fp_index[fp] = slug
-    _save_fingerprint_index(fp_index)
+    # Re-read under the lock rather than saving the snapshot loaded before the
+    # page was written. Two writers racing here would each save their pre-race
+    # snapshot, and the loser's ``fp -> slug`` mapping would be gone for good —
+    # that content then loses duplicate protection permanently.
+    with _file_lock(_fingerprint_index_path().with_name(".fingerprints.json.lock")):
+        index = _load_fingerprint_index()
+        index[fp] = slug
+        _save_fingerprint_index(index)
 
     return file_path
 

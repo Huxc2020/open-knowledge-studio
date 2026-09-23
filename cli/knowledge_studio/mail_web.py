@@ -105,7 +105,11 @@ def connection_status(root):
             if agent in verification:
                 item["verification_evidence"] = verification[agent]
             sessions.append(item)
-            machines.add(machine)
+            # A Session with no machine on record contributes no machine. The
+            # provenance loop below already filters it; counting the literal
+            # "unknown" here inflated machine_count with a non-machine.
+            if machine != "unknown":
+                machines.add(machine)
             if agent != "@human":
                 summary = agents.setdefault(agent, {
                     "agent_id": agent,

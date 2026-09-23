@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from knowledge_studio import mail
-from knowledge_studio.mail_web import create_server
+from knowledge_studio.mail_web import connection_status, create_server
 
 
 @pytest.fixture
@@ -63,3 +63,19 @@ def test_web_reads_real_threads_and_rejects_unsafe_requests(kb):
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+
+
+def test_connection_status_does_not_count_the_unknown_machine_token(kb):
+    """``machine_count`` must reflect real machines only.
+
+    A Session with no machine on record, or one whose id literally is
+    ``"unknown"``, is not a machine. Counting it inflated the roster the member
+    page shows, and disagreed with the provenance loop right below it, which
+    already filters the same token.
+    """
+    mail.register_session(kb, "s-unknown", "writer", machine_id="unknown")
+    mail.register_session(kb, "s-real", "reviewer", machine_id="machine-z")
+    status = connection_status(kb)
+    assert "unknown" not in status["machines"]
+    assert status["machines"] == ["machine-z"]
+    assert status["machine_count"] == len(status["machines"]) == 1

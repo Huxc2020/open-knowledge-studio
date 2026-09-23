@@ -71,3 +71,24 @@ def test_bad_utf8_receipt_and_state_do_not_break_visible_thread(tmp_path):
     records = delivery_records(tmp_path, [row])[result["message_id"]]
     assert records == [{"agent_id": "@writer", "read_at": None, "sessions": []}]
     assert activity_data(tmp_path)["events"][0]["excerpt"] == "still visible"
+
+
+def test_all_token_in_to_is_expanded_not_projected_as_a_recipient(tmp_path):
+    """A literal ``@all`` in ``to`` must not surface as a recipient.
+
+    The current writer path expands ``@all`` inside
+    :func:`mail.resolve_recipients`, so the literal token only survives in a
+    message written by an older build or by another clone. The read side is
+    still what decides who is shown as a recipient, so it has to expand the
+    token instead of listing it beside the real agents.
+    """
+    result = mail.write_message(tmp_path, sender="human", recipients="writer", body="hi")
+    row = next(mail.iter_messages(tmp_path, "writer"))
+    mail.record_delivery(tmp_path, "writer-s1", row, agent_id="writer")
+    legacy = {**row, "meta": {**row["meta"], "to": ["@all", "@writer"]}}
+    agents = [
+        item["agent_id"]
+        for item in delivery_records(tmp_path, [legacy])[result["message_id"]]
+    ]
+    assert "@all" not in agents
+    assert agents == ["@writer"]

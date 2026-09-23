@@ -29,8 +29,13 @@ def delivery_records(root, messages):
         receipts.setdefault((message_id, agent), []).append(record)
     result = {}
     for message_id, row in by_id.items():
-        recipients = set(row["meta"].get("to", []))
-        if "@all" in recipients:
+        declared = row["meta"].get("to", [])
+        # ``@all`` is an address, not a participant. Expanding it must resolve to
+        # the agents that actually produced a receipt; the literal token must not
+        # survive into the per-recipient projection, or every broadcast message
+        # gains a phantom recipient and pollutes its delivery detail.
+        recipients = set(declared) - {"", "@all"}
+        if "@all" in declared:
             recipients.update(agent for mid, agent in receipts if mid == message_id)
         result[message_id] = []
         for agent in sorted(recipients):
