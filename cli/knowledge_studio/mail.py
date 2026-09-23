@@ -554,7 +554,9 @@ def _iter_legacy(root: Path) -> Iterable[dict[str, Any]]:
     directory = root / "mail" / "inbox"
     if not directory.is_dir():
         return
-    for path in sorted(directory.glob("*.md"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+    # Historical inboxes were sometimes organised by date (mail/inbox/2026/09/11/…),
+    # so walk the whole subtree instead of only the flat top level.
+    for path in sorted(directory.rglob("*.md"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
         message = parse_message(path)
         if message:
             yield message

@@ -2964,11 +2964,11 @@ def mail_read(
     if not found:
         console.print(f"[red]Mail not found:[/red] {id}")
         raise typer.Exit(1)
-    if found["path"].parent == mail_domain.messages_dir(root):
-        mail_domain.update_recipient_state(root, agent, str(found["meta"].get("message_id")), read_at=mail_domain.iso_now())
-    else:
-        content = found["path"].read_text(encoding="utf-8").replace("read: false", "read: true", 1)
-        store._atomic_write(found["path"], content)
+    # Read state is per-recipient: even for a legacy shared Markdown file that
+    # still carries an old `read:` marker, never rewrite the shared file.
+    mail_domain.update_recipient_state(
+        root, agent, str(found["meta"].get("message_id")), read_at=mail_domain.iso_now()
+    )
     console.print(f"[green]Marked read for @{agent.lstrip('@')}:[/green] {id}")
 
 
@@ -3049,17 +3049,20 @@ def mail_archive(
         raise typer.Exit(1)
     archived_at = mail_domain.iso_now()
     for message in selected:
-        if message["path"].parent == mail_domain.messages_dir(root):
-            mail_domain.update_recipient_state(
-                root,
-                agent,
-                str(message["meta"].get("message_id")),
-                archived_at=archived_at,
-                thread_state="closed",
-            )
-        else:
-            content = message["path"].read_text(encoding="utf-8").replace("read: false", "read: true", 1)
-            store._atomic_write(message["path"], content)
+        message_id = str(message["meta"].get("message_id"))
+        changes = {"archived_at": archived_at, "thread_state": "closed"}
+        if message["path"].parent != mail_domain.messages_dir(root):
+            # A legacy Markdown file is shared by every recipient: seed this
+            # Agent's projection from the old read marker, but never rewrite
+            # the shared file — archiving is recipient-scoped.
+            state_path = mail_domain.recipient_state_path(root, agent, message_id)
+            if not state_path.is_file() and str(message["meta"].get("read", "false")).lower() == "true":
+                changes["read_at"] = (
+                    message["meta"].get("read_at")
+                    or message["meta"].get("timestamp")
+                    or mail_domain.iso_now()
+                )
+        mail_domain.update_recipient_state(root, agent, message_id, **changes)
     console.print(f"[green]Archived for @{agent.lstrip('@')}:[/green] {id}")
 
 
