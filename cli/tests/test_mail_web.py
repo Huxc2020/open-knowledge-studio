@@ -187,3 +187,50 @@ def test_removed_knowledge_toggle_route_fails_closed(kb):
         worker.join(timeout=5)
 
     assert target.read_bytes() == before, "写端点已移除，文件不应该被改动"
+
+
+# ── 主视图画的是关系网（2026-09-22）───────────────────────────────────
+#
+# 图例列的是**关系类型**，主视图原来画的是**目录从属**（中心 → 域 → 簇 → 点），
+# 两者对不上：读者会以为那些线是知识关系。更具体的一处是「簇 → 点」那条层级线
+# 借用了该点第一条关系的颜色键，于是图例里关掉某一类关系，层级线也跟着消失 ——
+# 一条只表示从属的线，不该参与关系的筛选。
+# 现在：知识点直接挂在知识域下（簇降为副标签），线只有两种 ——
+# 分组联线（__group）与知识关系（后端边表，按类型着色）。
+
+def test_global_view_draws_the_relation_network(kb):
+    """主视图必须真的按后端边表画关系，而不是只画层级。"""
+    server = create_server(kb, 0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        script = _served(f"http://127.0.0.1:{server.server_port}", "/app.js")
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+    assert "for (const e of km.edges" in script, "主视图要按后端边表画关系线"
+    assert "drawDomainBlocks(" in script, "域分组色块要画出来"
+    assert "__group" in script, "分组联线要和知识关系分开标"
+
+
+def test_hierarchical_lines_do_not_borrow_a_relation_key(kb):
+    """层级线的 relKey 只能是 __group。
+
+    借用关系色键的后果：图例里点掉「相关」，中心到知识点的从属线一起消失 ——
+    读者会以为那条从属线也是「相关」关系。
+    """
+    server = create_server(kb, 0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        script = _served(f"http://127.0.0.1:{server.server_port}", "/app.js")
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+    assert "relKey: p.relations[0]" not in script
+    # 剩下的 'related' 兜底只应该出现在「确实是一条关系」的地方（关系指向节点）。
+    assert "relKey: r.color_key || 'related'" in script

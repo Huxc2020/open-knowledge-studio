@@ -159,7 +159,9 @@ def test_projection_declares_where_each_level_comes_from(kb):
 
     projection = mail_knowledge.knowledge_map(kb)
     assert projection["scope"]["level_sources"] == [
-        "条目自己声明的所属领域", "条目的首个标签", "一份已审核的 Wiki 或候选条目",
+        "条目自己声明的所属领域",
+        "条目自己声明的关系，或与另一条知识共享的标签",
+        "一份已审核的 Wiki 或候选条目",
     ]
     # 口径可以改写，但「图是只读的、来源可追溯」这两条不能丢。
     why = projection["scope"]["why"]
@@ -301,68 +303,59 @@ def test_projection_reports_pluggable_state_without_a_write_path(kb):
     assert after["counts"]["disabled"] == 2
 
 
-def test_unmapped_machine_keys_never_become_group_titles(kb):
-    """分组名与标签行同源：翻不出来的英文机器键不能当标题漏给读者。
+# ── 主视图的关系网（2026-09-22）────────────────────────────────────────
+#
+# 图例列的是**关系类型**，而主视图原来画的是**目录从属**，两者对不上。
+# 图例计数还有个更硬的问题：它按逐条清单累加，同一条无向关系被两端各算一次 ——
+# 真实库上 14 条可画的关系被报成了 29 条。所以边表与图例现在同源。
 
-    Regression guard: 域名与簇名各自用 `.get(key, key)` 回退，于是表外的英文键
-    直接成了左栏 / 面包屑的标题，而同一条数据在 `tag_labels` 里已经被
-    `tag_label` 挡掉了 —— 同一个词在两处受到两种待遇。
-    """
-    write(kb, "wiki/a.md",
-          'title: "A"\narea: ghost-area\ntags: "ghost-area, ghost-cluster"\nstatus: active\n')
+def test_one_relation_between_two_entries_is_drawn_once(kb):
+    """同一条无向关系被两端各声明一次，主视图只该画一条、图例只该算一次。"""
+    write(kb, "wiki/a.md", 'title: "A"\narea: engineering\ntags: "engineering, ui"\nstatus: active\nrelations: "supports: wiki/b.md"\n')
+    write(kb, "wiki/b.md", 'title: "B"\narea: engineering\ntags: "engineering, ui"\nstatus: active\nrelations: "supports: wiki/a.md"\n')
 
     projection = mail_knowledge.knowledge_map(kb)
-    domain = projection["domains"][0]
-    cluster = domain["clusters"][0]
+    supports = [edge for edge in projection["edges"] if edge["type"] == "supports"]
+    assert len(supports) == 1
+    # 合并不能丢归属：两端的声明都记在这一条边上。
+    assert sorted(supports[0]["declared_by"]) == ["wiki/a.md", "wiki/b.md"]
+    # 端点排序固定，两个方向不可能各画一条。
+    assert supports[0]["a"] <= supports[0]["b"]
 
-    # 机器键留在 key 里（分组仍然稳定），给人看的一律是人话。
-    assert domain["key"] == "ghost-area"
-    assert cluster["key"] == "ghost-cluster"
-    assert domain["label"] == "未分类"
-    assert cluster["label"] == "未分组"
-    # Same data, same treatment: the label row already dropped these keys.
-    assert point(projection, "wiki/a.md")["tag_labels"] == []
-
-
-def test_relation_count_matches_the_legend_it_sits_next_to(kb):
-    """总数与图例同源：两者都只统计真正送出去的条目。
-
-    Regression guard: the count was accumulated over every scanned entry while
-    the legend walked only the kept ones, so any `limit` truncation made the two
-    disagree — the header said 3 edges above a legend that added up to 2.
-    """
-    for index in range(3):
-        write(
-            kb,
-            f"wiki/s{index}.md",
-            f'title: "来源{index}"\narea: knowledge\ntags: "knowledge, recall"\nstatus: active\n'
-            "relations:\n  - type: depends_on\n    target: 目标知识\n",
-        )
-    write(kb, "wiki/target.md", 'title: "目标知识"\narea: knowledge\ntags: "knowledge, recall"\nstatus: active\n')
-
-    projection = mail_knowledge.knowledge_map(kb, limit=2)
-
-    assert projection["counts"]["points"] == 2  # 确实被截断了，口径才有分歧的余地
-    assert projection["counts"]["relations"] == sum(
-        item["count"] for item in projection["relation_legend"]
-    )
+    assert projection["counts"]["edges"] == len(projection["edges"])
+    # 图例合计 == 画得出来的边数。这条断言就是防「图例比图多报一倍」回归。
+    assert sum(item["count"] for item in projection["relation_legend"]) == len(projection["edges"])
+    assert projection["counts"]["edges_cross_domain"] == 0
 
 
-def test_toggle_ignores_fields_that_merely_start_with_enabled(kb):
-    """`enabled_by:` 是别的字段，不是治理位。
+def test_edges_only_include_entries_that_are_in_the_graph(kb):
+    """指向未收录条目的关系画不出来，就不该出现在边表与图例里。"""
+    write(kb, "wiki/a.md", 'title: "A"\narea: engineering\ntags: "engineering, ui"\nstatus: active\nrelations: "depends_on: 还没建的条目"\n')
 
-    Regression guard: the ownership check used ``startswith("enabled")``, so
-    ``enabled_by: reviewer`` was read as the governance bit and
-    ``previous_enabled`` took its value — turning `changed` into a lie.
-    """
-    path = write(kb, "wiki/a.md",
-                 'title: "A"\nenabled_by: reviewer\narea: engineering\ntags: "engineering, ui"\nstatus: active\n')
+    projection = mail_knowledge.knowledge_map(kb)
+    assert projection["edges"] == []
+    assert sum(item["count"] for item in projection["relation_legend"]) == 0
+    # 但逐条清单里不能丢：下钻时要能标出「这条指向的条目尚未收录」。
+    assert point(projection, "wiki/a.md")["relations"][0]["resolved"] is False
+    assert projection["counts"]["points_without_relations"] == 1
 
-    result = mail_knowledge.set_enabled(kb, "wiki/a.md", False)
 
-    # 没有治理位就是默认开启；`enabled_by` 的值不代表开关状态。
-    assert result["previous_enabled"] is True
-    assert result["changed"] is True
-    text = path.read_text(encoding="utf-8")
-    assert "enabled_by: reviewer" in text  # 原样保留
-    assert "enabled: false" in text
+def test_two_different_relations_between_the_same_pair_are_both_kept(kb):
+    """同一对节点上的两个不同说法都要留 —— 那是两条关系，不是重复。"""
+    write(kb, "wiki/a.md", 'title: "A"\narea: engineering\ntags: "engineering, release, ui"\nstatus: active\nrelations: "contrast: wiki/b.md"\n')
+    write(kb, "wiki/b.md", 'title: "B"\narea: engineering\ntags: "engineering, ui, release"\nstatus: active\n')
+
+    projection = mail_knowledge.knowledge_map(kb)
+    assert sorted(edge["type"] for edge in projection["edges"]) == ["contrast", "related"]
+    # 两条边落在同一对节点上；前端要按序号把曲线错开，否则只看得见一条。
+    assert len({(edge["a"], edge["b"]) for edge in projection["edges"]}) == 1
+
+
+def test_cross_domain_edges_are_counted_from_the_drawable_table(kb):
+    write(kb, "wiki/a.md", 'title: "A"\narea: engineering\ntags: "engineering, ui"\nstatus: active\nrelations: "applies_to: wiki/b.md"\n')
+    write(kb, "wiki/b.md", 'title: "B"\narea: knowledge\ntags: "knowledge, recall"\nstatus: active\n')
+
+    projection = mail_knowledge.knowledge_map(kb)
+    assert projection["counts"]["edges"] == 1
+    assert projection["counts"]["edges_cross_domain"] == 1
+    assert projection["counts"]["points_without_relations"] == 0

@@ -297,6 +297,47 @@ def _skill_state(meta: dict, kind: str, governance_type: str) -> dict:
     return {"state": "none", "label": "尚未进入治理流程", "source": "", "target": ""}
 
 
+def _flat_edges(kept_ids: set[str], declared: list[tuple[str, dict]]) -> list[dict]:
+    """Collapse per-entry relation claims into the edges the main view can draw.
+
+    A relation is only drawable when both ends are inside the projection, so
+    unresolved targets -- and entries past the limit -- drop out here.  Each
+    unordered pair is kept once per relation type; ``a``/``b`` are stored in
+    sorted order so the two directions can never produce two lines.  Every
+    declaring entry and every provenance label is folded into the surviving
+    edge, so merging loses no attribution.
+    """
+    merged: dict[tuple[str, str, str], dict] = {}
+    order: list[tuple[str, str, str]] = []
+    for source_id, relation in declared:
+        target_id = relation.get("target_id") or ""
+        if not target_id or source_id == target_id:
+            continue
+        if source_id not in kept_ids or target_id not in kept_ids:
+            continue
+        a, b = sorted((source_id, target_id))
+        key = (a, b, relation["type"])
+        edge = merged.get(key)
+        if edge is None:
+            edge = {
+                "a": a,
+                "b": b,
+                "type": relation["type"],
+                "type_label": relation["type_label"],
+                "color_key": relation["color_key"],
+                "sources": [],
+                "declared_by": [],
+            }
+            merged[key] = edge
+            order.append(key)
+        label = relation.get("source_label") or relation.get("source") or ""
+        if label and label not in edge["sources"]:
+            edge["sources"].append(label)
+        if source_id not in edge["declared_by"]:
+            edge["declared_by"].append(source_id)
+    return [merged[key] for key in order]
+
+
 def knowledge_map(root: Path, limit: int = 400) -> dict:
     """Project wiki/drafts into domain → cluster → point with sourced edges."""
     limit = max(1, min(int(limit or 400), 2000))
@@ -402,6 +443,12 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
                 continue
             tag_index.setdefault(tag, []).append(point["id"])
 
+    relation_count = 0
+    #: Every relation the entries declare, before truncation and dedup.  The
+    #: per-entry list is capped at 12 so the drawer stays readable; the main
+    #: view must not lose lines just because of that cap, so the flat edge
+    #: table is built from this accumulator instead.
+    declared: list[tuple[str, dict]] = []
     for point in points:
         edges = []
         seen = set()
@@ -448,21 +495,25 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
                     "target_title": by_id[other]["title"],
                     "target_kind": by_id[other]["kind"],
                 })
+        declared.extend((point["id"], edge) for edge in edges)
         truncated_edges = len(edges) > 12
         point["relations"] = edges[:12]
         point["relations_truncated"] = truncated_edges
+        relation_count += len(point["relations"])
 
     truncated = len(points) > limit
     kept = points[:limit]
     kept_ids = {point["id"] for point in kept}
+    relation_edges = _flat_edges(kept_ids, declared)
+    area_of = {point["id"]: point["area"] for point in kept}
+    connected = {end for edge in relation_edges for end in (edge["a"], edge["b"])}
 
     domains: dict[str, dict] = {}
     for point in kept:
         domain = domains.setdefault(point["area"], {
             "id": point["area"],
             "key": point["area"],
-            # 与 tag_label 同源：翻不出来的英文机器键不能当分组名漏给读者。
-            "label": tag_label(point["area"]) or "未分类",
+            "label": DOMAIN_LABELS.get(point["area"], point["area"]),
             "count": 0,
             "clusters": {},
         })
@@ -470,7 +521,7 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
         cluster = domain["clusters"].setdefault(point["cluster"], {
             "id": point["cluster"],
             "key": point["cluster"],
-            "label": tag_label(point["cluster"]) or "未分组",
+            "label": CLUSTER_LABELS.get(point["cluster"], point["cluster"]),
             "count": 0,
             "points": [],
         })
@@ -534,19 +585,32 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
             ),
             "why": (
                 "知识图只是把 Wiki 里已经写好的关系画出来，不新增任何知识。"
-                "最外圈是知识域，中间是知识簇，最里面每一条都是一份已审核的 Wiki 或候选条目。"
+                "主视图按知识域分组，每条穿过分组的线都是条目自己声明的关系，颜色对应关系类型。"
+                "两边都收录在图里、才会有一条线；没有一条是从「看起来相关」推出来的。"
                 "每条连线都标了来源。这里不含原始素材，也不含 Agent 的执行过程。"
                 "图本身不写入任何东西；治理位也只展示，不在这里改。"
             ),
-            "level_sources": ["条目自己声明的所属领域", "条目的首个标签", "一份已审核的 Wiki 或候选条目"],
+            "level_sources": [
+                "条目自己声明的所属领域",
+                "条目自己声明的关系，或与另一条知识共享的标签",
+                "一份已审核的 Wiki 或候选条目",
+            ],
         },
         "counts": {
             "domains": len(domain_list),
             "clusters": sum(len(domain["clusters"]) for domain in domain_list),
             "points": len(kept),
-            # 与 relation_legend 同源：两边都只统计真正送出去的 kept 条目。
-            # 否则 `limit` 截断时总数会把被截掉的关系算进去，与图例各说一套。
-            "relations": sum(len(point["relations"]) for point in kept),
+            "relations": relation_count,
+            # What the main view can actually draw: one entry per unordered
+            # pair, both ends inside the projection.  The legend reports this,
+            # not the per-entry tally -- that tally counted a single undirected
+            # relation once from each end.
+            "edges": len(relation_edges),
+            "edges_cross_domain": sum(
+                1 for edge in relation_edges
+                if area_of.get(edge["a"]) != area_of.get(edge["b"])
+            ),
+            "points_without_relations": len(kept) - len(connected),
             "reviewed": sum(1 for point in kept if point["kind"] == "wiki"),
             "candidates": sum(1 for point in kept if point["kind"] == "candidate"),
             "skill_candidates": sum(1 for point in kept if point["skill"]["state"] == "candidate"),
@@ -556,19 +620,17 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
             "governance_typed": sum(1 for point in kept if point["governance"]["type"] != "unclassified"),
         },
         "domains": domain_list,
+        # The main view draws exactly these; the legend counts exactly these.
+        "edges": relation_edges,
+        # Counting the per-entry lists instead double-counted every undirected
+        # relation (once from each end) and reported 29 edges for 14 drawable
+        # ones.  A legend has to describe the picture next to it.
         "relation_legend": [
             {
                 "id": kind,
                 "label": label,
                 "color_key": kind,
-                "count": sum(
-                    1
-                    for domain in domain_list
-                    for cluster in domain["clusters"]
-                    for point in cluster["points"]
-                    for rel in point["relations"]
-                    if rel["type"] == kind
-                ),
+                "count": sum(1 for edge in relation_edges if edge["type"] == kind),
             }
             for kind, label in RELATION_TYPES.items()
         ] + [
@@ -576,14 +638,7 @@ def knowledge_map(root: Path, limit: int = 400) -> dict:
                 "id": "unknown",
                 "label": "未识别关系",
                 "color_key": "unknown",
-                "count": sum(
-                    1
-                    for domain in domain_list
-                    for cluster in domain["clusters"]
-                    for point in cluster["points"]
-                    for rel in point["relations"]
-                    if rel["type"] == "unknown"
-                ),
+                "count": sum(1 for edge in relation_edges if edge["type"] == "unknown"),
             }
         ],
         "governance": {
@@ -677,11 +732,8 @@ def set_enabled(root: Path, relative: str, enabled: bool) -> dict:
     previous = None
     for line in front.splitlines():
         stripped = line.strip()
-        key, separator, value = stripped.partition(":")
-        # 字段名必须精确相等：`startswith("enabled")` 会把 `enabled_by:` 也认成
-        # 治理位，于是 previous_enabled 读的是别的字段的值，changed 跟着错。
-        if separator and key.strip().lower() == TOGGLE_FIELD:
-            previous = value.strip().strip('"').strip("'")
+        if stripped.lower().startswith(f"{TOGGLE_FIELD}"):
+            previous = stripped.partition(":")[2].strip().strip('"').strip("'")
             break
     previous_enabled = True if previous is None else previous.strip().lower() in {"1", "true", "yes", "on"}
 

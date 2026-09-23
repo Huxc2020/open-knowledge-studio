@@ -291,3 +291,9 @@ small{font-size:11.5px}
 .graph-node.off rect{opacity:.5;stroke-dasharray:3 3}
 .graph-node.off .gn-label,.graph-node.off .gn-sub{opacity:.6}
 .detail-frame .frame-label{margin:0;padding:7px 12px;font-size:10.5px;font-weight:600;color:var(--muted);background:var(--soft);border-bottom:1px solid var(--line-soft)}
+
+/* ── 主视图关系网（D2） ─────────────────────────────────────────────
+   域分组色块只是分组提示，压在最底层；分组联线与知识关系要一眼分得开：
+   前者细、淡、虚线，后者粗、实线、按关系类型着色。 */
+.gn-blocks .gn-block { stroke: none; opacity: 0.11; }
+.graph-edge.group { stroke-dasharray: 5 5; }
