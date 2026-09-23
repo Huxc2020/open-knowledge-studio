@@ -3295,15 +3295,15 @@ def _ensure_recall_scripts(root: Path, hooks_dir: Path | None = None) -> list[st
     The .sh wrapper gets the current interpreter baked into its OKS_PYTHON
     fallback. If an existing .sh lacks the current bake (fresh copy still on
     `python3`, or baked against a stale interpreter), it is re-copied from
-    the asset source and re-baked. Explicit hook installation refreshes
-    existing Python engines; the init compatibility path preserves custom
-    engines and only adds missing support files.
+    the asset source and re-baked. Existing hook engines are refreshed when
+    their bundled source has changed, so protocol updates reach installed
+    instances too: hook engines are baked runtime, not a customization
+    surface.
     """
     import shutil
     import stat
     import sys
 
-    refresh_existing_engines = hooks_dir is not None
     hooks_dir = hooks_dir or (root / ".claude" / "hooks")
     hooks_dir.mkdir(parents=True, exist_ok=True)
 
@@ -3332,8 +3332,6 @@ def _ensure_recall_scripts(root: Path, hooks_dir: Path | None = None) -> list[st
     for name in _RECALL_HOOK_SCRIPTS:
         dest = hooks_dir / name
         if dest.exists():
-            if not refresh_existing_engines and name.endswith(".py"):
-                continue
             try:
                 dest_text = dest.read_text(encoding="utf-8")
                 if src_dir is not None and (src_dir / name).is_file():
@@ -3494,8 +3492,8 @@ _HOOK_RECALL_STATUSES = {
 }
 
 
-def _hook_recall_error(reason: str) -> dict:
-    return {
+def _hook_recall_error(reason: str, diagnostic: str = "") -> dict:
+    result = {
         "schema": _HOOK_RECALL_SCHEMA,
         "status": "error",
         "context": "",
@@ -3507,6 +3505,11 @@ def _hook_recall_error(reason: str) -> dict:
         },
         "reason": reason,
     }
+    # Diagnostics are opt-in: the failure detail can carry host paths and
+    # stderr from the child, so it stays out of the default envelope.
+    if diagnostic and os.environ.get("OKS_HOOK_DIAGNOSTICS", "").lower() in {"1", "true", "yes"}:
+        result["diagnostic"] = diagnostic[-1000:]
+    return result
 
 
 def _valid_hook_number(value: object, *, allow_none: bool = False) -> bool:
@@ -3569,6 +3572,11 @@ def _run_hook_recall(
     env = os.environ.copy()
     env["OKS_ROOT"] = str(root)
     env["OKS_HOOK_OUTPUT"] = "json"
+    # The Hook Bridge exchanges JSON with a Python child process. Force UTF-8
+    # instead of inheriting a Windows console code page that cannot round-trip
+    # Chinese prompts or recall context.
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     package_root = str(Path(__file__).resolve().parents[1])
     inherited_pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = os.pathsep.join([package_root, inherited_pythonpath]).rstrip(os.pathsep)
@@ -3587,13 +3595,20 @@ def _run_hook_recall(
             check=False,
         )
         if completed.returncode != 0:
-            raise RuntimeError(f"hook exited {completed.returncode}")
+            detail = f"hook exited {completed.returncode}"
+            stderr = str(getattr(completed, "stderr", "") or "").strip()
+            if stderr:
+                detail += f": {stderr[-1000:]}"
+            raise RuntimeError(detail)
         data = _validate_hook_recall_response(json.loads(completed.stdout))
         if data is None:
             raise ValueError("invalid hook response")
         return data
-    except Exception:
-        return _hook_recall_error("hook_bridge_failed")
+    except Exception as exc:
+        return _hook_recall_error(
+            "hook_bridge_failed",
+            diagnostic=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def _read_hook_history(root: Path, limit: int, session_id: str, cwd: str) -> dict:
