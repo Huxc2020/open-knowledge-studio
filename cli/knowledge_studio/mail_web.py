@@ -1,4 +1,5 @@
 """Packaged loopback Mail workspace; all persistence uses Mail Core."""
+import html
 import json
 import hashlib
 import re
@@ -8,14 +9,43 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from knowledge_studio import identity, mail, store
+from knowledge_studio import mail_knowledge, mail_timeline, team_sync
 from knowledge_studio.mail_activity import activity_data, delivery_records
 from knowledge_studio.mail_setup import asset_root, validate_root, agent_id
-from knowledge_studio import team_sync
 
 ROOT = asset_root() / "mail-web"
 FILES = {"/": ("index.html", "text/html"), "/style.css": ("style.css", "text/css"), "/app.js": ("app.js", "text/javascript"), "/favicon.svg": ("favicon.svg", "image/svg+xml")}
 FILES["/layout.css"] = ("layout.css", "text/css")
+FILES["/wiki-page.css"] = ("wiki-page.css", "text/css")
 UI_AGENT = "human"
+
+#: Self-contained page shown for "在完整 Wiki 中打开" (new tab) and embedded in
+#: the detail drawer. No scripts at all, so the strict CSP below is enough.
+WIKI_PAGE_CSP = (
+    "default-src 'none'; style-src 'self'; img-src 'self' data:; "
+    "base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+)
+
+
+def connection_guide(kb_root: Path) -> str:
+    """Text the page copies so the user can hand onboarding to a host Agent.
+
+    Mirrors ``assets/skills/oks-mail/references/connection.md``. The page only
+    copies it (移交而非代办): it never installs a Skill, edits host config, or
+    claims the Agent is connected.
+    """
+    reference = asset_root() / "skills" / "oks-mail" / "references" / "connection.md"
+    try:
+        body = reference.read_text(encoding="utf-8").strip()
+    except OSError:
+        body = ""
+    header = (
+        "OKS Mail 接入说明\n"
+        f"知识库：{kb_root}\n"
+        "把上面的知识库路径交给宿主对话区里的 Agent，让它在对话区完成接入；"
+        "本面板只复制说明，不安装 Skill、不改宿主配置、不宣称已连接。\n"
+    )
+    return header + ("\n---\n\n" + body if body else "")
 
 
 def json_bytes(value):
@@ -75,12 +105,55 @@ def _mail_verification(root):
     return verified
 
 
+def _verification_state(agent, verification, traced):
+    """三态：有回执证据 → 已验证；只有消息痕迹 → 已观察到；只剩档案 → 未验证。
+
+    面板不显示在线状态（文件系统推不出来）。这三态说的都是「本机能查到
+    什么证据」，不是对方此刻在不在。缺了第三态，一份没跟任何消息发生过
+    关系的档案会被说成「已观察到」——那是在无证据地承认对方参与过。
+    """
+    if agent in verification:
+        return "verified"
+    return "observed" if agent in traced else "unverified"
+
+
 def connection_status(root):
     """Return observed provenance plus explicit Mail lifecycle verification."""
     sessions = []
     agents = {}
     machines = set()
     verification = _mail_verification(root)
+    # 「有投递痕迹」：这个身份在某条消息里发过言、或被人投递过。
+    # 它与「有回执证据」是两件事——痕迹只说明双方通过消息接触过，
+    # 不说明对方确认读到了。所以得先把全库的消息扫完，再统一判状态。
+    traced: set[str] = set()
+
+    # 消息先扫：它同时提供「这个身份存在过」和「有过投递痕迹」两份信息，
+    # 而 Session 档案只提供前者。顺序反过来就算不出未验证。
+    # 视野必须是全库而不是 human 视角：回执证据（_mail_verification）本身就是
+    # 全库口径，痕迹若只看局部的收件箱，两者不可比——别人之间的交接会被算成
+    # 没发生过，本该「已观察到」的身份会掉进「未验证」。
+    for message in mail.iter_messages(root):
+        sender = mail._normalise_agent(str(message["meta"].get("from", "")))
+        if sender not in {"@human", "@unknown"}:
+            traced.add(sender)
+            summary = agents.setdefault(sender, {
+                "agent_id": sender,
+                "session_count": 0,
+                "machine_ids": set(),
+                "last_observed_at": "",
+            })
+            timestamp = str(message["meta"].get("timestamp", "") or "")
+            if timestamp > summary["last_observed_at"]:
+                summary["last_observed_at"] = timestamp
+        for recipient in message["meta"].get("to", []) or []:
+            peer = mail._normalise_agent(str(recipient))
+            if peer not in {"@human", "@all", "@unknown"}:
+                traced.add(peer)
+        machine = str(message["meta"].get("origin_machine_id", "") or "")
+        if machine and machine != "unknown":
+            machines.add(machine)
+
     directory = mail.sessions_dir(root)
     if directory.is_dir():
         for path in sorted(directory.glob("*.json")):
@@ -98,7 +171,7 @@ def connection_status(root):
                 "session_id": session_id,
                 "agent_id": agent,
                 "machine_id": machine,
-                "verification_status": "verified" if agent in verification else "observed",
+                "verification_status": _verification_state(agent, verification, traced),
                 "last_observed_at": last_seen,
                 "scope": str(record.get("scope", "") or ""),
             }
@@ -122,29 +195,11 @@ def connection_status(root):
                 if last_seen > summary["last_observed_at"]:
                     summary["last_observed_at"] = last_seen
 
-    # Message provenance can show a machine even when its Session record has
-    # expired or was never registered on this clone.
-    for message in mail.iter_messages(root, UI_AGENT):
-        sender = mail._normalise_agent(str(message["meta"].get("from", "")))
-        if sender not in {"@human", "@unknown"}:
-            summary = agents.setdefault(sender, {
-                "agent_id": sender,
-                "session_count": 0,
-                "machine_ids": set(),
-                "last_observed_at": "",
-            })
-            timestamp = str(message["meta"].get("timestamp", "") or "")
-            if timestamp > summary["last_observed_at"]:
-                summary["last_observed_at"] = timestamp
-        machine = str(message["meta"].get("origin_machine_id", "") or "")
-        if machine and machine != "unknown":
-            machines.add(machine)
-
     serialised_agents = []
     for summary in sorted(agents.values(), key=lambda item: item["agent_id"]):
         summary = dict(summary)
         summary["machine_ids"] = sorted(summary["machine_ids"])
-        summary["verification_status"] = "verified" if summary["agent_id"] in verification else "observed"
+        summary["verification_status"] = _verification_state(summary["agent_id"], verification, traced)
         if summary["agent_id"] in verification:
             summary["verification_evidence"] = verification[summary["agent_id"]]
         serialised_agents.append(summary)
@@ -326,6 +381,10 @@ def _memory_summary(meta: dict, body: str, path: Path) -> dict:
         "provisional": "待确认",
         "stale": "需要更新",
     }.get(status, status)
+    # 页面上要显示人话，不要显示 frontmatter 的原始值（"collaboration" / "strategy"）。
+    # 标签表跟知识图共用同一份 DOMAIN_LABELS / GOVERNANCE_TYPES，避免两处口径漂移。
+    area_label = mail_knowledge.DOMAIN_LABELS.get(area)
+    governance = mail_knowledge.GOVERNANCE_TYPES.get(memory_type)
     return {
         "path": str(path),
         "kind": kind,
@@ -333,8 +392,14 @@ def _memory_summary(meta: dict, body: str, path: Path) -> dict:
         "title": _memory_title(meta, body, path),
         "summary": summary,
         "area": area,
+        "area_label": area_label or area,
         "type": memory_type,
+        # 只有真的声明了治理类型才有标签；普通 Wiki 条目不冒充治理位。
+        "type_label": governance[0] if governance else "",
         "tags": [str(tag) for tag in tags[:12]],
+        # 给读者看的标签沿用同一套人话口径；翻不出来的英文机器键在这里就被挡掉，
+        # 页面拿到的是可以直接显示的清单，不用再判断。
+        "tag_labels": [label for label in (mail_knowledge.tag_label(tag) for tag in tags[:12]) if label],
         "status": status,
         "status_label": status_label,
         "updated_at": event_time.isoformat(),
@@ -418,6 +483,258 @@ def _json_safe(value):
         return [_json_safe(item) for item in value]
     return str(value)
 
+
+# ── Wiki 原文页：把一篇 Markdown 知识渲染成可独立打开的只读页面 ──────────
+#
+# 「在完整 Wiki 中打开」必须真的打开这篇知识，而不是只把路径复制到剪贴板。
+# 渲染在服务端完成，页面零脚本，因此可以用很严的 CSP（default-src 'none'）。
+# 正文一律先转义再套用一小撮 Markdown 规则 —— 知识正文是数据，不是可执行内容。
+
+_MD_INLINE_CODE = re.compile(r"`([^`]+)`")
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+_MD_EM = re.compile(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])")
+_MD_LINK = re.compile(r"!?\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+_MD_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+_MD_UL = re.compile(r"^[-*+]\s+(.*)$")
+_MD_OL = re.compile(r"^\d+[.)]\s+(.*)$")
+_MD_TABLE_RULE = re.compile(r"^\s*\|?[\s:\-|]*-[\s:\-|]*\|?\s*$")
+
+
+def _md_link(match):
+    label = match.group(1) or match.group(2)
+    target = match.group(2)
+    if target.startswith(("http://", "https://")):
+        return f'<a href="{target}" rel="noreferrer noopener" target="_blank">{label}</a>'
+    # 相对路径指向知识库里的其他文件，本页面不代理它们，所以只标出引用目标。
+    return f'<span class="md-ref" title="{target}">{label}</span>'
+
+
+def _md_inline(escaped: str) -> str:
+    stash: list[str] = []
+
+    def keep(match):
+        stash.append(match.group(1))
+        return f"\x00{len(stash) - 1}\x00"
+
+    escaped = _MD_INLINE_CODE.sub(keep, escaped)
+    escaped = _MD_BOLD.sub(r"<strong>\1</strong>", escaped)
+    escaped = _MD_EM.sub(r"<em>\1</em>", escaped)
+    escaped = _MD_LINK.sub(_md_link, escaped)
+    for index, code in enumerate(stash):
+        escaped = escaped.replace(f"\x00{index}\x00", f"<code>{code}</code>")
+    return escaped
+
+
+def md_to_html(body: str) -> str:
+    """Render a deliberately small Markdown subset of an already-trusted file."""
+    lines = str(body or "").replace("\r\n", "\n").split("\n")
+    out: list[str] = []
+    paragraph: list[str] = []
+    quote: list[str] = []
+    items: list[str] = []
+    list_kind = ""
+    index = 0
+
+    def close_paragraph():
+        if paragraph:
+            out.append(f"<p>{_md_inline(html.escape(' '.join(paragraph)))}</p>")
+            paragraph.clear()
+
+    def close_quote():
+        if quote:
+            inner = "".join(f"<p>{_md_inline(html.escape(line))}</p>" for line in quote)
+            out.append(f"<blockquote>{inner}</blockquote>")
+            quote.clear()
+
+    def close_list():
+        nonlocal list_kind
+        if items:
+            rows = "".join(f"<li>{_md_inline(html.escape(item))}</li>" for item in items)
+            out.append(f"<{list_kind}>{rows}</{list_kind}>")
+            items.clear()
+        list_kind = ""
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+
+        if stripped.startswith("```"):
+            close_paragraph(); close_quote(); close_list()
+            index += 1
+            code: list[str] = []
+            while index < len(lines) and not lines[index].strip().startswith("```"):
+                code.append(lines[index])
+                index += 1
+            index += 1
+            out.append(f"<pre><code>{html.escape(chr(10).join(code))}</code></pre>")
+            continue
+
+        if not stripped:
+            close_paragraph(); close_quote(); close_list()
+            index += 1
+            continue
+
+        heading = _MD_HEADING.match(stripped)
+        if heading:
+            close_paragraph(); close_quote(); close_list()
+            level = min(len(heading.group(1)) + 1, 6)
+            out.append(f"<h{level}>{_md_inline(html.escape(heading.group(2)))}</h{level}>")
+            index += 1
+            continue
+
+        if re.fullmatch(r"(-{3,}|\*{3,}|_{3,})", stripped):
+            close_paragraph(); close_quote(); close_list()
+            out.append("<hr>")
+            index += 1
+            continue
+
+        if stripped.startswith("> "):
+            close_paragraph(); close_list()
+            quote.append(stripped[2:].strip())
+            index += 1
+            continue
+
+        # 简易表格：本行含 |，下一行是分隔行
+        if "|" in stripped and index + 1 < len(lines) and "|" in lines[index + 1] and _MD_TABLE_RULE.match(lines[index + 1]):
+            close_paragraph(); close_quote(); close_list()
+            header = [cell.strip() for cell in stripped.strip("|").split("|")]
+            out.append("<table><thead><tr>" + "".join(f"<th>{_md_inline(html.escape(cell))}</th>" for cell in header) + "</tr></thead><tbody>")
+            index += 2
+            while index < len(lines) and "|" in lines[index] and lines[index].strip():
+                cells = [cell.strip() for cell in lines[index].strip().strip("|").split("|")]
+                out.append("<tr>" + "".join(f"<td>{_md_inline(html.escape(cell))}</td>" for cell in cells) + "</tr>")
+                index += 1
+            out.append("</tbody></table>")
+            continue
+
+        unordered = _MD_UL.match(stripped)
+        ordered = _MD_OL.match(stripped)
+        if unordered or ordered:
+            close_paragraph(); close_quote()
+            want = "ul" if unordered else "ol"
+            if list_kind and list_kind != want:
+                close_list()
+            list_kind = want
+            items.append((unordered or ordered).group(1))
+            index += 1
+            continue
+
+        close_quote(); close_list()
+        paragraph.append(stripped)
+        index += 1
+
+    close_paragraph(); close_quote(); close_list()
+    return "\n".join(out)
+
+
+def _human_time(value) -> str:
+    """ISO 时间 → 人看的「2026-09-19 00:00」。解析不了就原样返回，不吞掉信息。"""
+    text = str(value or "").strip()
+    if not text:
+        return "—"
+    try:
+        return datetime.fromisoformat(text).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return text
+
+
+def render_wiki_page(item: dict, embed: bool = False) -> str:
+    """Build the standalone page for one knowledge entry (no scripts)."""
+    relations = mail_knowledge._relations(item.get("metadata") or {})
+    badges = [item.get("kind_label") or "", item.get("status_label") or ""]
+    if item.get("type_label"):
+        badges.append(str(item["type_label"]))
+    if item.get("truncated"):
+        badges.append("正文在投影中截断")
+
+    # 面向普通读者：显示中文标签而不是 frontmatter 原始值，
+    # 把「文件路径 / 时间来源」这类给维护者看的信息降级到页脚的展开说明里。
+    tag_names = list(item.get("tag_labels") or [])
+    if not tag_names:
+        tag_names = [mail_knowledge.tag_label(t) for t in (item.get("tags") or [])]
+    tag_names = [name for name in tag_names if name]
+    rows = [
+        ("知识域", item.get("area_label") or item.get("area") or "—"),
+    ]
+    if item.get("type_label"):
+        rows.append(("治理类型", str(item["type_label"])))
+    rows += [
+        ("审核状态", item.get("status_label") or "—"),
+        ("最近更新", _human_time(item.get("updated_at"))),
+        ("标签", "、".join(tag_names) or "—"),
+    ]
+    meta_html = "".join(
+        f"<dt>{html.escape(str(key))}</dt><dd>{html.escape(str(value))}</dd>" for key, value in rows
+    )
+    if relations:
+        rel_rows = "".join(
+            f'<li><span class="rel-kind">{html.escape(r.get("type_label") or r.get("type") or "")}</span>'
+            f'<span class="rel-target">{html.escape(str(r.get("target_title") or r.get("target") or ""))}</span>'
+            f'<span class="rel-src">{html.escape(str(r.get("source_label") or r.get("source") or ""))}</span></li>'
+            for r in relations
+        )
+        rel_html = f'<h2>关系（{len(relations)}）</h2><ul class="wiki-rel">{rel_rows}</ul>'
+    else:
+        rel_html = '<h2>关系</h2><p class="wiki-none">这条知识没有声明关系，也没有与其他条目共享标签。</p>'
+
+    title = html.escape(str(item.get("title") or "未命名知识"))
+    summary = html.escape(str(item.get("summary") or ""))
+    body_html = md_to_html(item.get("body") or "")
+    truncated = (
+        '<p class="wiki-cut">正文在本页中被截断，完整内容以知识库文件为准。</p>'
+        if item.get("truncated") else ""
+    )
+    chrome = "" if embed else (
+        '<nav class="wiki-crumbs">'
+        '<a class="wiki-back" href="/">← 返回面板</a>'
+        '<span class="sep">|</span>'
+        '<span>OKS Wiki</span><span class="sep">›</span>'
+        f'<span class="cur">{title}</span></nav>'
+    )
+    detail_bits = [f"文件：{html.escape(str(item.get('path') or '—'))}"]
+    source = str(item.get("timestamp_source") or "").strip()
+    if source:
+        detail_bits.append(f"时间来源：{html.escape(mail_knowledge.time_source_label(source))}")
+    footer = "" if embed else (
+        '<footer class="wiki-foot">本页是 OKS Mail 观察面板打开的只读投影；'
+        '写入与审核仍在知识库与人的流程里完成。'
+        f'<details class="why"><summary>这份信息从哪来？</summary>'
+        f'<p>{" · ".join(detail_bits)}</p></details></footer>'
+    )
+    # 内嵌模式（抽屉里）不再重复标题 / 徽章 / 摘要 —— 抽屉自己已经展示了这三样，
+    # 重复一遍只是噪音。两种模式共用同一份正文渲染，所以不会漂移。
+    if embed:
+        head = ""
+    else:
+        head = (
+            f"<h1>{title}</h1>\n"
+            f"<p class=\"wiki-badges\">{''.join(f'<span class=\"chip\">{html.escape(str(b))}</span>' for b in badges if b)}</p>\n"
+            + (f'<p class="wiki-summary">{summary}</p>\n' if summary else "")
+            + f'<dl class="wiki-meta">{meta_html}</dl>\n'
+        )
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} · OKS Wiki</title>
+<link rel="stylesheet" href="/wiki-page.css">
+</head>
+<body class="{'embed' if embed else 'full'}">
+<main class="wiki">
+{chrome}
+{head}<section class="wiki-body">
+{body_html}
+</section>
+{truncated}
+{rel_html}
+{footer}
+</main>
+</body>
+</html>
+"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.headers.get("Host") != f"127.0.0.1:{self.server.server_port}":
@@ -468,6 +785,38 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/mail/snapshot":
             self.send_json(200, mail.snapshot_data(self.server.kb_root, UI_AGENT))
             return
+        if route == "/api/mail/timeline":
+            query = parse_qs(urlsplit(self.path).query)
+            raw_limit = query.get("limit", [None])[0]
+            try:
+                limit = int(raw_limit) if raw_limit not in (None, "") else mail_timeline.DEFAULT_LIMIT
+            except (TypeError, ValueError):
+                limit = mail_timeline.DEFAULT_LIMIT
+            self.send_json(200, mail_timeline.timeline_data(self.server.kb_root, UI_AGENT, limit))
+            return
+        if route == "/api/mail/knowledge-map":
+            self.send_json(200, mail_knowledge.knowledge_map(self.server.kb_root))
+            return
+        if route in {"/api/mail/wiki-page", "/wiki-page"}:
+            query = parse_qs(urlsplit(self.path).query)
+            relative = query.get("path", [""])[0]
+            embed = query.get("embed", ["0"])[0] in {"1", "true", "yes"}
+            try:
+                item = _memory_item(self.server.kb_root, relative)
+            except FileNotFoundError as exc:
+                self.send_html(404, f"<p>{html.escape(str(exc))}</p>")
+                return
+            except ValueError as exc:
+                self.send_html(400, f"<p>{html.escape(str(exc))}</p>")
+                return
+            self.send_html(200, render_wiki_page(item, embed=embed))
+            return
+        if route == "/api/connection-guide":
+            self.send_json(200, {
+                "knowledge_base": str(self.server.kb_root),
+                "guide": connection_guide(self.server.kb_root),
+            })
+            return
         entry = FILES.get(route)
         if not entry:
             self.send_error(404)
@@ -492,6 +841,17 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_html(self, status, markup):
+        data = markup.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Security-Policy", WIKI_PAGE_CSP)
+        self.end_headers()
+        self.wfile.write(data)
+
     def read_json(self):
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length <= 0 or length > 65536:
@@ -507,6 +867,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(403, {'error': 'same-origin JSON requests required'})
             return
         route = self.path.split("?", 1)[0]
+        # 面板是只读观察面：这里不再有「改知识库文件」的写端点。
+        # `/api/mail/knowledge/toggle` 已于 2026-09-22 移除（它写的 enabled 位当时没有任何消费方，
+        # 界面却据此声称下游生效）。下面这些写端点都只操作 mail/ 协作记录，不碰 wiki/ 与 drafts/。
         if route not in {"/api/mail/send", "/api/mail/reply", "/api/mail/invite", "/api/mail/read", "/api/mail/archive", "/api/mail/unarchive", "/api/mail/team/sync"}:
             self.send_error(404)
             return
@@ -639,14 +1002,9 @@ class Handler(BaseHTTPRequestHandler):
                                 or message["meta"].get("timestamp")
                                 or mail.iso_now()
                             )
-                    if message["path"].parent == mail.messages_dir(self.server.kb_root):
-                        mail.update_recipient_state(
-                            self.server.kb_root, UI_AGENT, message_id, **changes,
-                        )
-                    else:
-                        mail.update_recipient_state(
-                            self.server.kb_root, UI_AGENT, message_id, **changes,
-                        )
+                    mail.update_recipient_state(
+                        self.server.kb_root, UI_AGENT, message_id, **changes,
+                    )
                 self.send_json(200, {"status": "archived", "target": target, "count": len(selected)})
                 return
             if route == "/api/mail/unarchive":
@@ -674,12 +1032,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not message:
                     raise ValueError("message not found")
                 message_id = str(message["meta"].get("message_id", ""))
-                if message["path"].parent == mail.messages_dir(self.server.kb_root):
-                    state = mail.update_recipient_state(self.server.kb_root, UI_AGENT, message_id, read_at=mail.iso_now())
-                else:
-                    # Legacy Markdown is shared by all recipients; persist the
-                    # read transition in this Agent's projection only.
-                    state = mail.update_recipient_state(self.server.kb_root, UI_AGENT, message_id, read_at=mail.iso_now())
+                # Read state is per-recipient: even for a legacy shared Markdown
+                # file, persist the transition in this Agent's projection only —
+                # the shared file is never rewritten.
+                state = mail.update_recipient_state(self.server.kb_root, UI_AGENT, message_id, read_at=mail.iso_now())
                 self.send_json(200, {"status": "read", "message_id": message_id, "state": state})
                 return
             self.send_error(404)

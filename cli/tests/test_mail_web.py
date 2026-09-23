@@ -1,5 +1,6 @@
 """HTTP contract tests for the real local Mail workspace."""
 import json
+import re
 import threading
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -7,7 +8,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from knowledge_studio import mail
-from knowledge_studio.mail_web import connection_status, create_server
+from knowledge_studio.mail_web import create_server
 
 
 @pytest.fixture
@@ -35,7 +36,11 @@ def test_web_reads_real_threads_and_rejects_unsafe_requests(kb):
 
     try:
         with request("/") as response:
-            assert b"recipient" in response.read()
+            # Phase 1 panel: read-only observation surface (rail nav + timeline + wiki graph).
+            body = response.read()
+            assert "协作时间线".encode() in body
+            assert "Wiki 知识图".encode() in body
+            assert b"<form" not in body
         with request("/api/mail/send", {"to": "custom-agent,reviewer", "title": "Hi", "body": "hello"}) as response:
             result = json.load(response)
         assert len(mail.snapshot_data(kb, "custom-agent")["threads"]) == 1
@@ -65,17 +70,120 @@ def test_web_reads_real_threads_and_rejects_unsafe_requests(kb):
         worker.join(timeout=5)
 
 
-def test_connection_status_does_not_count_the_unknown_machine_token(kb):
-    """``machine_count`` must reflect real machines only.
+# ── 独立 Wiki 页：面向普通读者的显示契约（R6）────────────────────────────
+#
+# 这一页是「有人点进来才看到」的深页面，最容易漏出维护者字段。
+# 三条硬要求：分类值显示人话、维护信息降级进展开说明、不出现内部字段名。
 
-    A Session with no machine on record, or one whose id literally is
-    ``"unknown"``, is not a machine. Counting it inflated the roster the member
-    page shows, and disagreed with the provenance loop right below it, which
-    already filters the same token.
+def test_wiki_page_shows_human_labels_and_hides_maintenance_details():
+    from knowledge_studio.mail_web import render_wiki_page
+
+    item = {
+        "path": "wiki/decision-card-on-blocker.md",
+        "kind": "wiki",
+        "kind_label": "已审核 Wiki",
+        "title": "受阻时就地长出决策卡",
+        "summary": "执行流受阻时就地展开候选方案。",
+        "body": "## Summary\n\n正文一段。\n",
+        "tags": ["collaboration", "checkpoint", "ui"],
+        "tag_labels": ["团队与协作", "人类检查点", "界面与交互"],
+        "area": "collaboration",
+        "area_label": "团队与协作",
+        "type": "strategy",
+        "type_label": "策略",
+        "status": "active",
+        "status_label": "可复用",
+        "updated_at": "2026-09-19T00:00:00+00:00",
+        "timestamp_source": "updated_at",
+    }
+    page = render_wiki_page(item)
+
+    # 分类值必须是人话
+    assert "团队与协作、人类检查点、界面与交互" in page
+    assert "治理类型" in page and "策略" in page
+    # 原始字段值 / 字段名一个都不许露
+    for leaked in ("collaboration", "updated_at", "file_mtime", "frontmatter"):
+        assert leaked not in page, leaked
+    # 维护信息保留但降级：默认收在展开说明里，且人话化
+    assert "文件：wiki/decision-card-on-blocker.md" in page
+    assert "时间来源：条目里记录的更新时间" in page
+    assert '<details class="why">' in page
+    # 点进来的人要有回头路
+    assert "← 返回面板" in page
+
+
+def test_wiki_page_never_invents_tag_labels_for_unknown_english_keys():
+    """翻不出来的英文机器键不硬塞给读者；中文标签原样保留。"""
+    from knowledge_studio.mail_knowledge import tag_label
+
+    assert tag_label("collaboration") == "团队与协作"
+    assert tag_label("checkpoint") == "人类检查点"
+    assert tag_label("some_internal_key") == ""
+    assert tag_label("自定义主题") == "自定义主题"
+    assert tag_label(None) == ""
+
+
+# ── 只读边界：面板不许有写路径（2026-09-22）─────────────────────────────
+#
+# 背景：面板原先有一个治理开关（裸 checkbox + change 即 POST /api/mail/knowledge/toggle），
+# 写的是 wiki/drafts 条目的 enabled 位。移除它有两个理由，都记在案：
+#   ① 那个位当时没有任何消费方（recall / store / skill / hook 都不读它），
+#      而界面据此声称「停用后不再被 Skill 层启用」—— 许诺了一个没实现的下游效果；
+#   ② 一个只读观察面不该是唯一能改写知识库文件的入口。
+# 这两条断言把这个边界钉住，防止它被悄悄加回来。
+
+def _served(base, route):
+    with urlopen(base + route, timeout=5) as response:
+        return response.read().decode("utf-8")
+
+
+def test_panel_serves_no_post_capable_control(kb):
+    """面板不能有任何会发 POST 的控件。
+
+    口径说明：判「是否只读」要数**发 POST 的请求**，不是数表单元素。
+    左栏的 showCounts / showSource 是视图开关，kmSearch 是筛选框 —— 数 form/input
+    会把它们误判成写控件；反过来，数表单元素也会漏掉一个裸 checkbox。
+    2026-09-22 那次「零写操作」结论就是这么假绿的：口径是「form 数为 0」，
+    而真正的写路径是一个 `input.type='checkbox'` + change 即 POST。
     """
-    mail.register_session(kb, "s-unknown", "writer", machine_id="unknown")
-    mail.register_session(kb, "s-real", "reviewer", machine_id="machine-z")
-    status = connection_status(kb)
-    assert "unknown" not in status["machines"]
-    assert status["machines"] == ["machine-z"]
-    assert status["machine_count"] == len(status["machines"]) == 1
+    server = create_server(kb, 0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    try:
+        script = _served(f"http://127.0.0.1:{server.server_port}", "/app.js")
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+    assert not re.search(r"method\s*:\s*['\"]POST['\"]", script, re.IGNORECASE), (
+        "面板是只读观察面，不应该发 POST"
+    )
+    assert "<form" not in script
+
+
+def test_removed_knowledge_toggle_route_fails_closed(kb):
+    """被移除的写端点必须 404，且目标文件一个字节都不许变。"""
+    target = kb / "wiki" / "a.md"
+    target.write_text("---\ntitle: A\n---\n\nbody\n", encoding="utf-8")
+    before = target.read_bytes()
+
+    server = create_server(kb, 0)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        req = Request(
+            base + "/api/mail/knowledge/toggle",
+            data=json.dumps({"path": "wiki/a.md", "enabled": False}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        with pytest.raises(HTTPError) as error:
+            urlopen(req, timeout=5)
+        assert error.value.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=5)
+
+    assert target.read_bytes() == before, "写端点已移除，文件不应该被改动"

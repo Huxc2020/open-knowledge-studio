@@ -1,0 +1,103 @@
+/* OKS Mail Phase 1 · 单篇 Wiki 知识页（服务端渲染，零脚本）
+   用途：① 详情抽屉内嵌（?embed=1）② 新标签打开「在完整 Wiki 中打开」。
+   与面板同色板，但独立成页，因此自带全部样式，不依赖 style.css。 */
+*{box-sizing:border-box}
+:root{
+  color-scheme:light;
+  --bg:#f4f6f8; --card:#fff; --soft:#f8fafb; --line:#e4e8ec; --line-soft:#eef1f4;
+  --text:#1f2933; --muted:#6b7a88; --dim:#93a1ad;
+  --brand:#1d4ed8; --brand-soft:#eaf0ff;
+  --ok:#0f9d63; --okbg:#e6f7ef;
+  --warn:#b06a12; --warnbg:#fdf3e2;
+}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:14.5px/1.72 -apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;
+}
+body.embed{background:#fff}
+.wiki{max-width:760px;margin:0 auto;padding:26px 24px 56px;background:#fff;min-height:100dvh}
+body.embed .wiki{max-width:none;padding:14px 14px 28px;min-height:0}
+@media(max-width:640px){.wiki{padding:18px 16px 44px}}
+
+.wiki-crumbs{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin-bottom:14px;flex-wrap:wrap}
+.wiki-crumbs .sep{color:var(--line)}
+.wiki-crumbs .cur{color:var(--text);font-weight:600}
+/* 这一页是在新上下文里打开的，没有面板导航；必须给一个明确的返回入口，
+   否则用户只能靠浏览器后退（2026-09-20 Owner 反馈）。 */
+.wiki-back{color:var(--brand);font-weight:600;text-decoration:none;border:1px solid var(--line);
+  border-radius:8px;padding:3px 9px;background:#fff}
+.wiki-back:hover{background:var(--brand-soft);border-color:#c7d6ff}
+
+.wiki h1{font-size:22px;line-height:1.35;margin:0 0 10px;letter-spacing:-.01em}
+.wiki h2{font-size:16.5px;margin:26px 0 8px}
+.wiki h3{font-size:14.5px;margin:20px 0 6px}
+.wiki h4,.wiki h5,.wiki h6{font-size:13.5px;margin:16px 0 4px;color:var(--muted)}
+
+.wiki-badges{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.wiki-badges .chip{
+  font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;
+  background:var(--brand-soft);color:var(--brand);
+}
+.wiki-badges .chip:nth-child(2){background:var(--okbg);color:var(--ok)}
+
+.wiki-summary{
+  margin:0 0 18px;padding:12px 14px;border-left:3px solid var(--brand);
+  background:var(--soft);border-radius:0 8px 8px 0;color:var(--text);font-size:13.5px;
+}
+
+.wiki-meta{
+  display:grid;grid-template-columns:96px minmax(0,1fr);gap:5px 12px;
+  margin:0 0 22px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--soft);
+}
+.wiki-meta dt{font-size:11.5px;color:var(--dim);margin:0}
+.wiki-meta dd{margin:0;font-size:12.5px;word-break:break-word}
+@media(max-width:520px){
+  .wiki-meta{grid-template-columns:minmax(0,1fr);gap:0 0}
+  .wiki-meta dd{margin-bottom:8px}
+}
+
+.wiki-body{border-top:1px solid var(--line-soft);padding-top:6px}
+.wiki-body p{margin:0 0 12px}
+.wiki-body ul,.wiki-body ol{margin:0 0 12px;padding-left:22px}
+.wiki-body li{margin:3px 0}
+.wiki-body blockquote{
+  margin:0 0 12px;padding:8px 14px;border-left:3px solid var(--line);
+  background:var(--soft);color:var(--muted);border-radius:0 8px 8px 0;
+}
+.wiki-body pre{
+  margin:0 0 14px;padding:12px 14px;overflow-x:auto;border-radius:9px;
+  background:#f6f8fa;border:1px solid var(--line);
+}
+.wiki-body code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,'Courier New',monospace;font-size:12.5px;
+  background:#f2f5f8;padding:1.5px 5px;border-radius:5px;
+}
+.wiki-body pre code{background:none;padding:0;white-space:pre}
+.wiki-body hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.wiki-body a{color:var(--brand)}
+.wiki-body .md-ref{border-bottom:1px dashed var(--line);cursor:help}
+.wiki-body table{width:100%;border-collapse:collapse;margin:0 0 14px;font-size:12.5px}
+.wiki-body th,.wiki-body td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.wiki-body th{background:var(--soft);font-weight:600}
+
+.wiki-rel{list-style:none;margin:0;padding:0}
+.wiki-rel li{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+.wiki-rel li:last-child{border-bottom:none}
+.rel-kind{font-size:11px;font-weight:650;color:var(--brand);flex:none;min-width:74px}
+.rel-target{font-size:12.5px;font-weight:600}
+.rel-src{font-size:11px;color:var(--dim);margin-left:auto;text-align:right}
+@media(max-width:520px){.rel-src{margin-left:0;width:100%;text-align:left}}
+
+.wiki-none,.wiki-cut{margin:0;color:var(--muted);font-size:12px}
+.wiki-cut{margin-top:14px;padding:8px 12px;background:var(--warnbg);color:var(--warn);border-radius:8px}
+
+.wiki-foot{
+  margin-top:30px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--dim);
+}
+.wiki-foot .why{margin-top:8px}
+.wiki-foot .why>summary{cursor:pointer;list-style:none;color:var(--dim)}
+.wiki-foot .why>summary::-webkit-details-marker{display:none}
+.wiki-foot .why>summary::before{content:'▸ ';font-size:10px}
+.wiki-foot .why[open]>summary::before{content:'▾ '}
+.wiki-foot .why>p{margin:6px 0 0;line-height:1.6}

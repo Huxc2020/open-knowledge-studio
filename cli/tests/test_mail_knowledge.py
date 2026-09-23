@@ -5,6 +5,7 @@ Two invariants matter more than the shape of the output:
 * every relation edge states where it came from, and
 * Concept / Strategy / Anti-Strategy never become the Wiki's taxonomy.
 """
+import json
 from pathlib import Path
 
 import pytest
@@ -175,7 +176,7 @@ def test_scope_copy_leaks_no_protocol_words(kb):
     scope = projection["scope"]
     visible = f"{scope['note']} {scope['why']} " + " ".join(scope["level_sources"])
     governance = " ".join(
-        [projection["governance"]["note"], projection["governance"]["toggle"]["writes"]]
+        [projection["governance"]["note"]]
         + list(projection["governance"]["skill_boundary"]["allowed"])
         + list(projection["governance"]["skill_boundary"]["not_done"])
     )
@@ -196,11 +197,13 @@ def test_every_time_source_key_has_a_human_label():
     assert mail_knowledge.time_source_label("updated_at") == "条目里记录的更新时间"
 
 
-# ── 治理开关：模块唯一的写入路径 ────────────────────────────────────────
+# ── 治理位：库能力保留，面板没有任何调用方 ──────────────────────────────
 #
 # 这些测试守的是数据安全，不是功能花样：
 # 写进去的必须只有一个布尔字段，其他字节与正文必须原样保留，
 # 越界路径和没有 frontmatter 的文件必须被拒绝，而不是被「顺手修好」。
+# 注意：面板的写路径已于 2026-09-22 移除，这里是**库能力**的契约测试；
+# 将来若重新暴露，必须走 CLI / Agent，而不是无鉴权的 HTTP 路由。
 
 def test_toggle_writes_only_the_governance_bit_and_keeps_a_backup(kb):
     path = write(kb, "wiki/a.md", 'title: "A"\narea: engineering\ntags: "engineering, ui"\nstatus: active\n', "正文第一行\n正文第二行\n")
@@ -274,16 +277,21 @@ def test_toggle_refuses_frontmatter_less_file_instead_of_inventing_one(kb):
     assert path.read_text(encoding="utf-8") == "没有 frontmatter 的正文\n"
 
 
-def test_projection_reports_pluggable_state_and_toggle_metadata(kb):
+def test_projection_reports_pluggable_state_without_a_write_path(kb):
     write(kb, "wiki/on.md", 'title: "开"\ntype: strategy\narea: engineering\ntags: "engineering, ui"\nstatus: active\n')
     write(kb, "wiki/off.md", 'title: "关"\ntype: concept\narea: engineering\ntags: "engineering, ui"\nstatus: active\nenabled: false\n')
 
     projection = mail_knowledge.knowledge_map(kb)
     assert projection["counts"]["enabled"] == 1
     assert projection["counts"]["disabled"] == 1
-    toggle = projection["governance"]["toggle"]
-    assert toggle["field"] == "enabled"
-    assert toggle["counts"] == {"enabled": 1, "disabled": 1}
+    state = projection["governance"]["enabled_state"]
+    assert state["field"] == "enabled"
+    assert state["counts"] == {"enabled": 1, "disabled": 1}
+    # 只读边界：payload 不许再宣告任何写端点或写保证 —— 面板已经不提供写路径，
+    # 留一个 endpoint 在这里等于让页面替一个不存在的接口许愿。
+    governance = projection["governance"]
+    assert "toggle" not in governance
+    assert "/api/" not in json.dumps(governance, ensure_ascii=False)
     assert [m["path"] for m in projection["governance"]["pluggable"]] == ["wiki/off.md", "wiki/on.md"]
     assert [m["enabled"] for m in projection["governance"]["pluggable"]] == [False, True]
 

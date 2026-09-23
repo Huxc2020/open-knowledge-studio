@@ -3,52 +3,219 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>OKS Studio · 知识工作台</title>
+  <title>OKS Mail · 协作过程的观察窗口</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="layout.css">
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="runtime-bar" aria-live="polite"><span id="runtimeText">正在连接本地 OKS Mail…</span><button id="refresh" type="button">刷新</button></header>
-  <nav class="workspace-mobile" aria-label="工作台导航"></nav>
-  <div class="shell">
-    <nav class="rail" aria-label="工作台导航">
-      <a class="logo" href="/" aria-label="OKS 协作首页"><span class="mark">o</span><span>OKS <strong>Studio</strong></span></a>
-      <div class="workspace"><span class="workspace-icon">O</span><div><b>我的协作空间</b><small>消息留在这里，对话接着走</small></div></div>
-      <div class="workspace-nav">
-        <div class="workspace-nav-title">工作台</div>
-        <button data-view="mail"><span>✉</span> 协作记录 <small>明确留下的协作事实</small></button>
-        <button data-view="memory"><span>◇</span> 记忆 <small>raw、candidate、wiki 与召回</small></button>
-        <button data-view="agents"><span>◎</span> 成员与来源 <small>Agent、Session、Machine 与证据</small></button>
+  <div class="app">
+    <!-- ── 左侧栏 ───────────────────────────────────────── -->
+    <aside class="rail" aria-label="观察面板导航">
+      <header class="rail-brand">
+        <span class="brand-mark">o</span>
+        <span class="brand-text"><b>OKS Mail</b><small>协作过程的观察窗口 · 知识资产的可视化入口</small></span>
+      </header>
+
+      <nav class="rail-tabs" aria-label="观察视图">
+        <button type="button" class="rail-tab active" data-tab="timeline">
+          <span class="rt-icon">◔</span>
+          <span class="rt-text"><b>时间线</b><small>发生过的协作事实</small></span>
+        </button>
+        <button type="button" class="rail-tab" data-tab="knowledge">
+          <span class="rt-icon">✦</span>
+          <span class="rt-text"><b>Wiki 知识图</b><small>探索知识资产的结构关联</small></span>
+        </button>
+      </nav>
+
+      <!-- 时间线页左栏 -->
+      <div class="rail-pane" data-pane="timeline">
+        <div class="rail-group">
+          <div class="rail-group-title">观察范围</div>
+          <button type="button" class="rail-item" data-scope="all">全部事实 <em id="scopeAllCount">0</em></button>
+          <button type="button" class="rail-item active" data-scope="key">关键协作 <em id="scopeKeyCount">0</em></button>
+          <button type="button" class="rail-item" data-scope="ack">已确认收到 <em id="scopeAckCount">0</em></button>
+        </div>
+        <div class="rail-group">
+          <div class="rail-group-title">成员</div>
+          <div id="railAgents" class="rail-agents"></div>
+        </div>
+        <div class="rail-group">
+          <div class="rail-group-title">Skills 治理</div>
+          <button type="button" class="rail-item" data-goto="governance">治理规则与边界</button>
+        </div>
       </div>
-      <button id="new" class="primary">＋ 发起协作</button>
-      <div class="nav-label">协作记录</div>
-      <button class="nav-item active" data-filter="all">全部记录 <span id="total"></span></button>
-      <button class="nav-item" data-filter="unread">未读消息 <span id="unread"></span></button>
-      <button class="nav-item" data-filter="archived">已归档</button>
-      <div class="rail-bottom"><div class="identity"><span class="avatar ink">你</span><span><b>你</b><small>当前设备 · human 身份</small></span></div></div>
-    </nav>
-    <section class="inbox" aria-label="对话列表">
-      <header><div><span class="eyebrow">协作记录</span><h1 id="listTitle">全部记录</h1></div><button id="mobileNew" aria-label="发起协作">＋</button></header>
-      <label class="search"><span>⌕</span><input id="search" placeholder="搜索对话或参与者" aria-label="搜索对话或参与者"></label>
-      <div class="mobile-filters"><button data-filter="all">全部</button><button data-filter="unread">未读</button><button data-filter="archived">归档</button></div>
-      <div id="threadList"></div>
-      <footer><span class="status-dot"></span> <span id="syncLabel">正在读取…</span></footer>
-    </section>
-    <main id="conversation">
-      <header class="conversation-head"><button id="back" aria-label="返回协作记录">←</button><div class="head-text"><div id="participants" class="eyebrow"></div><h2 id="subject"></h2><div id="conversationModes" class="conversation-modes" aria-label="这段记录的状态"></div></div><button id="moreActions" aria-haspopup="dialog" aria-expanded="false" disabled>更多</button><button id="archive" hidden>归档</button><button id="unarchive" hidden>取消归档</button><button id="details" hidden aria-expanded="false">记录详情 ⓘ</button></header>
-      <div id="messages" aria-label="对话消息"></div>
-      <form id="replyForm"><div class="compose-meta"><span>以 <b>你（此设备）</b> 的身份继续这段协作</span><span id="replyTo"></span></div><label class="sr-only" for="reply">继续这段协作</label><textarea id="reply" rows="3" maxlength="12000" placeholder="写下新的事实、进展或需要确认的事项…"></textarea><div id="replyError" class="error" role="alert"></div><div class="compose-actions"><span>追加到同一 Thread；不会自动唤醒对方</span><button id="send" class="primary" type="submit">继续协作 ↑</button></div></form>
-      <p class="footnote">只保存明确发送到 Mail 的记录；是否读取、确认或执行均以真实回执为准。</p>
+
+      <!-- Wiki 知识图页左栏 -->
+      <div class="rail-pane" data-pane="knowledge" hidden>
+        <button type="button" class="rail-back" id="kmBack">← 知识全景</button>
+        <div class="rail-group">
+          <div class="rail-group-title">视图范围</div>
+          <button type="button" class="rail-item active" data-km-scope="all">全部知识 <em id="kmScopeAll">0</em></button>
+          <button type="button" class="rail-item" data-km-scope="wiki">已审核 Wiki <em id="kmScopeWiki">0</em></button>
+          <button type="button" class="rail-item" data-km-scope="candidate">Candidate 候选 <em id="kmScopeCand">0</em></button>
+        </div>
+        <div class="rail-group">
+          <div class="rail-group-title">视图控制</div>
+          <div class="rail-control">
+            <span>缩放</span>
+            <span class="ctl-zoom"><button type="button" id="zoomOut" aria-label="缩小">−</button><b id="zoomLabel">100%</b><button type="button" id="zoomIn" aria-label="放大">＋</button></span>
+          </div>
+          <div class="rail-control">
+            <span>展开层级</span>
+            <span class="ctl-zoom"><button type="button" id="depthDown" aria-label="减少展开层级">−</button><b id="depthLabel">2 级</b><button type="button" id="depthUp" aria-label="增加展开层级">＋</button></span>
+          </div>
+          <label class="rail-switch"><input type="checkbox" id="showCounts" checked><span>显示关联数</span></label>
+          <label class="rail-switch"><input type="checkbox" id="showSource" checked><span>显示来源</span></label>
+        </div>
+        <div class="rail-group">
+          <div class="rail-group-title">关系类型</div>
+          <div id="relationLegend" class="legend"></div>
+        </div>
+      </div>
+
+      <footer class="rail-foot"><span class="brand-mark small">o</span><span>OKS <small id="oksVersion">v0.1</small></span><span class="rail-foot-note">Local Knowledge · Real Progress</span></footer>
+    </aside>
+
+    <!-- ── 主区 ─────────────────────────────────────────── -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title"><b id="pageTitle">协作时间线</b><small id="runtimeText" aria-live="polite">正在读取本机知识库…</small></div>
+        <div class="topbar-tags"><span>少而精</span><span>看得懂</span><span>有边界</span><span>可沉淀</span>
+          <button type="button" id="refresh" class="ghost">刷新</button></div>
+      </header>
+
+      <!-- 时间线视图 -->
+      <section class="view" id="view-timeline">
+        <article class="card">
+          <header class="card-head">
+            <div><h2>助手与连接</h2><small class="muted">当前知识库里的协作成员与上下文</small></div>
+            <span class="badge-live" id="liveBadge">协作中</span>
+          </header>
+          <p class="note muted" id="connHint">状态是<strong>从本机记录推出来的</strong>，不是在线状态。</p>
+          <details class="why"><summary>这三个状态分别是什么意思？</summary>
+            <p class="muted small">有确认或同一段对话的回复证据 → <strong>已验证</strong>；
+            只有投递痕迹 → <strong>已观察到</strong>；只有档案 → <strong>未验证</strong>。
+            这里不显示在线状态——文件系统推不出来，所以不猜。</p>
+          </details>
+          <div class="avatars" id="agentAvatars"></div>
+          <div class="conn-foot">
+            <button type="button" id="copyGuide" class="ghost">复制接入说明</button>
+            <span class="muted small">交给宿主对话区里的 Agent 去执行接入；面板不安装、不改配置。</span>
+          </div>
+        </article>
+
+        <!-- 固定阶段阶梯：骨架固定，状态与时间只来自真实事件 -->
+        <article class="card">
+          <header class="card-head">
+            <div><h2>任务阶段</h2><small class="muted" id="stageSub">这次协作走到哪一步了</small></div>
+            <span class="muted small" id="stageCounts"></span>
+          </header>
+          <ol class="stages" id="stageLadder"></ol>
+          <p class="muted small" id="stageNote"></p>
+          <details class="why"><summary>这些时间是怎么来的？</summary>
+            <p class="muted small" id="stageWhy"></p>
+            <div id="stageEvidence"></div>
+          </details>
+        </article>
+
+        <article class="card">
+          <header class="card-head">
+            <div><h2>协作时间线</h2><small class="muted" id="tlScopeNote"></small></div>
+            <span class="muted small" id="tlCounts"></span>
+          </header>
+          <ol class="steps" id="timeline"></ol>
+          <details class="why"><summary>这张列表收了什么、没收录什么？</summary>
+            <p class="muted small" id="tlWhy"></p>
+          </details>
+          <p class="muted small" id="tlMore" hidden></p>
+        </article>
+      </section>
+
+      <!-- Wiki 知识图视图 -->
+      <section class="view" id="view-knowledge" hidden>
+        <!-- 全局大图：始终在位，作为背景认知 -->
+        <article class="card graph-card">
+          <header class="card-head">
+            <div><h2 id="graphTitle">知识地图</h2><small class="muted" id="graphSub">点开一个知识域，下面会展开它的细节；大图始终在这儿</small></div>
+            <div class="graph-tools">
+              <label class="search-inline"><span>⌕</span><input id="kmSearch" type="search" placeholder="搜索知识节点" aria-label="搜索知识节点"></label>
+              <button type="button" id="fitView" class="ghost">适应视图</button>
+              <button type="button" id="fullscreen" class="ghost">全屏</button>
+            </div>
+          </header>
+          <nav class="crumbs" aria-label="图谱路径" id="kmCrumbs"></nav>
+          <div class="graph-stage" id="graphStageGlobal">
+            <span class="stage-tag">全局知识图</span>
+            <svg id="graphSvgGlobal" role="img" aria-label="全局知识关系图"></svg>
+            <div class="graph-empty" id="graphEmpty" hidden></div>
+            <div class="mini-map" id="miniMap" hidden></div>
+          </div>
+          <p class="muted small" id="graphNote"></p>
+          <details class="why"><summary>图上的层级和连线代表什么？</summary>
+            <p class="muted small" id="graphWhy"></p>
+          </details>
+        </article>
+
+        <!-- 大图嵌套小图：全局大图始终作为背景认知，这里展开当前聚焦的局部图 -->
+        <article class="card focus-card" id="focusCard" hidden>
+          <header class="card-head">
+            <div><h2 id="focusTitle">当前聚焦</h2><small class="muted" id="focusSub">当前簇的局部关系图，与大图同屏</small></div>
+            <div class="focus-actions">
+              <button type="button" id="focusUp" class="ghost" hidden>← 返回上一层</button>
+              <button type="button" id="focusBack" class="ghost">回到全局</button>
+            </div>
+          </header>
+          <div class="graph-stage local" id="graphStageLocal">
+            <svg id="graphSvgLocal" role="img" aria-label="当前聚焦的局部关系图"></svg>
+          </div>
+        </article>
+
+        <article class="card gov" id="governance">
+          <header class="card-head">
+            <div><h2>可复用的经验</h2><small class="muted">哪些做法已经确认可用、哪些还不建议用</small></div>
+            <span class="muted small" id="govCounts"></span>
+          </header>
+          <div id="govBody"></div>
+          <p class="muted small" id="govNote"></p>
+          <details class="why"><summary>这个阶段能做什么、不做什么？</summary>
+            <div id="govPolicy"></div>
+            <p class="muted small">这个面板是只读的，不改任何文件：治理位由知识库文件承载，这里只展示。
+            每条经验都必须引用一份已审核的 Wiki 或候选条目，引用不上就不会出现在这里。</p>
+          </details>
+        </article>
+      </section>
     </main>
-    <aside id="detailPanel" hidden aria-label="详情"><header><h3 id="detailTitle">对话详情</h3><button id="closeDetails" aria-label="关闭详情">×</button></header><div id="detailContent"></div></aside>
-    <section id="workspacePage" hidden aria-label="工作台内容"></section>
+
+    <!-- ── 右侧详情面板 ─────────────────────────────────── -->
+    <aside class="detail" id="detailPanel" hidden aria-label="详情">
+      <header class="detail-head">
+        <span class="muted small" id="detailKind"></span>
+        <button type="button" id="detailClose" aria-label="关闭详情">×</button>
+      </header>
+      <h3 id="detailTitle"></h3>
+      <div id="detailBadges" class="detail-badges"></div>
+      <p class="detail-sum" id="detailSummary"></p>
+      <div class="detail-body" id="detailBody" hidden></div>
+      <div class="detail-frame" id="detailFrameWrap" hidden>
+        <p class="frame-label">Wiki 正文 · 与「在完整 Wiki 中打开」是同一份渲染</p>
+        <iframe id="detailFrame" title="Wiki 正文" loading="lazy"></iframe>
+      </div>
+      <dl class="detail-meta" id="detailMeta"></dl>
+      <div class="detail-plug" id="detailPlug" hidden></div>
+      <div class="detail-rel" id="detailRelations" hidden></div>
+      <div class="detail-actions" id="detailActions"></div>
+      <!-- 排查信息默认收起：它服务的是另一类读者（排障/开发者）。
+           普通读者要判断的是「这段协作怎么样了」，id 与计数只会稀释那个判断。 -->
+      <details class="why diag" id="detailDiagWrap" hidden>
+        <summary>诊断信息（排查用，不影响上面的结论）</summary>
+        <dl class="detail-meta" id="detailDiag"></dl>
+      </details>
+      <p class="muted small" id="detailFootnote"></p>
+    </aside>
   </div>
-  <dialog id="composeDialog"><form id="newForm"><header><div><span class="eyebrow">发起协作</span><h2>选择一个协作动作</h2></div><button type="button" data-close aria-label="关闭协作窗口">×</button></header><p class="muted-text">这是 Skill 的用户入口：先说清楚要做什么，系统再写入一条可跨 Session 继续的协作记录。不会自动唤醒、启动或执行 Agent。</p><label class="field">协作对象<input id="recipient" name="person" list="agentChoices" required placeholder="例如：Claude、DSH"><datalist id="agentChoices"></datalist><small>优先选择已有成员档案；跨 Session 会按同一个稳定身份继续。</small></label><label class="field">协作动作<select id="newIntent"><option value="handoff">交接一项工作</option><option value="result">报告已完成结果</option><option value="blocked">报告当前阻塞</option><option value="knowledge_ref">请对方查看或审核一条知识</option><option value="note">补充说明</option><option value="message">留下一条重要消息</option></select><small>系统会自动填写协议字段，动作只描述已经发生或明确提出的协作事实。</small></label><input id="newRecordKind" type="hidden" value="handoff"><input id="newDeliveryReason" type="hidden" value="handoff"><label class="field">关联知识（可选）<input id="newEvidencePath" placeholder="wiki/... 或 drafts/..."><small>只保存路径型 Evidence，不复制知识正文；跨机器后由同一知识库路径解析。</small></label><label class="field">事项标题<input id="newTitle" required maxlength="120" placeholder="例如：候选知识需要审核"></label><label class="field">说明<textarea id="newBody" required rows="4" maxlength="12000" placeholder="写清楚发生了什么、希望对方确认什么，或留下什么结果"></textarea></label><div class="error" id="newError" role="alert"></div><footer><span id="composeModeHint">写入协作记录；Agent 下次检查时可读</span><button type="submit" class="primary">保存协作记录 ↑</button></footer></form></dialog>
-  <dialog id="memberDialog"><form id="memberForm"><header><div><span class="eyebrow">成员档案申请</span><h2 id="memberDialogTitle">添加助手</h2></div><button type="button" data-close aria-label="关闭成员档案窗口">×</button></header><p class="muted-text">这不是连接、安装或启动。它会把一份结构化建档申请交给负责操纵 OKS 的 Agent，由 Agent 按团队约定建立共享档案。</p><input id="memberKind" type="hidden" value="assistant"><label class="field">负责建档的 Agent ID<input id="memberController" required placeholder="例如：oks-manager"><small>填写会读取 Mail 并处理档案的稳定 Agent ID。</small></label><label class="field">成员稳定 ID<input id="memberId" required maxlength="120" pattern="[A-Za-z0-9_.@-]+" placeholder="例如：reviewer"></label><label class="field">显示名称<input id="memberName" required maxlength="120" placeholder="例如：审稿助手"></label><label class="field">职责<input id="memberRole" required maxlength="200" placeholder="例如：负责候选知识初审"></label><label class="field">工作范围（可选）<input id="memberScope" maxlength="240" placeholder="例如：science、engineering"></label><label class="field">补充说明（可选）<textarea id="memberNotes" rows="3" maxlength="4000" placeholder="交接约定、输入输出或注意事项"></textarea></label><div class="error" id="memberError" role="alert"></div><footer><span>会写入一条 handoff Mail</span><button type="submit" class="primary">发送建档申请 ↑</button></footer></form></dialog>
-  <dialog id="threadActionsDialog" class="action-dialog"><header><div><span class="eyebrow">这段记录</span><h2>更多操作</h2></div><button type="button" data-close aria-label="关闭更多操作">×</button></header><div id="threadActionMenu" class="thread-action-menu"><button type="button" data-thread-action="details"><b>查看事实与证据</b><small>查看参与者、来源、回执和证据引用</small></button><button type="button" data-thread-action="archive"><b>归档记录</b><small>从当前列表隐藏，之后仍可找回</small></button><button type="button" data-thread-action="unarchive" hidden><b>取消归档</b><small>把记录放回全部记录</small></button></div><div id="threadActionContent" hidden></div></dialog>
-  <dialog id="infoDialog"><header><h2 id="infoTitle"></h2><button data-close aria-label="关闭说明">×</button></header><div id="infoBody"></div></dialog>
-  <div id="toast" role="status" aria-live="polite"></div>
+
+  <div id="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

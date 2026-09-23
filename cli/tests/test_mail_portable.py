@@ -86,7 +86,13 @@ def test_web_generic_recipient_and_origin(kb):
 
     try:
         with request("/") as response:
-            assert b"recipient" in response.read()
+            page = response.read()
+        # Phase 1 面板：收件人概念依旧通用 —— 身份一律由 API 投影提供，页面里不写死任何收件人。
+        # （旧断言 `b"recipient" in page` 依赖旧版英文文案，随 Phase 1 重做作废；
+        #   这里守的是同一个不变量，换成对当前实现的断言。）
+        assert "协作时间线".encode() in page
+        assert b"reviewer" not in page
+        assert b"custom-agent" not in page
         with request("/favicon.svg") as response:
             assert response.headers["Content-Type"].startswith("image/svg+xml")
             assert b"<svg" in response.read()
@@ -284,18 +290,26 @@ def test_web_memory_projection_uses_durable_time_and_hides_inactive(kb):
 
 
 def test_web_empty_state_actions_use_presence_checks():
+    """面板不提供自己做不到的动作（原则②：移交而非代办）。
+
+    旧版是在空状态里摆「发起协作 / 创建 / 刷新记忆 / 团队同步」按钮，靠 presence 检查决定显不显示。
+    Phase 1 把这些入口整体移除（面板不再自己发起协作，也不安装、不发布），
+    所以本用例守的仍是同一个意图，只是断言方向从「有没有这个按钮」变成「这些入口都不得再长回来」。
+    """
     app = (asset_root() / "mail-web" / "app.js").read_text(encoding="utf-8")
-    assert "button.hasAttribute('data-create')" in app
-    assert "button.hasAttribute('data-refresh-memory')" in app
-    assert "button.hasAttribute('data-team-sync')" in app
-    assert "const MAIL_INTENTS" in app
-    assert "data-create-intent" in app
-    assert "data-memory-collab-path" in app
-    assert "threadSessions" in app
     html = (asset_root() / "mail-web" / "index.html").read_text(encoding="utf-8")
-    assert 'id="newIntent"' in html
-    assert '发起协作' in html
-    assert 'id="agentChoices"' in html
+    # 面板不出手：源码里不得再出现任何自发起入口
+    for removed in ("data-create", "data-refresh-memory", "data-team-sync",
+                    "MAIL_INTENTS", "data-create-intent", "data-memory-collab-path",
+                    "threadSessions"):
+        assert removed not in app, f"面板不得重新长出 {removed} 入口"
+    for removed in ("newIntent", "agentChoices", "发起协作"):
+        assert removed not in html, f"面板不得重新长出 {removed} 入口"
+    # 接入这件事没被删，只是改成「生成 prompt 交给宿主对话区去执行」
+    assert "复制接入说明" in html
+    assert "交给宿主对话区" in html
+    # 零写入口
+    assert "<form" not in html
 
 
 def test_web_connection_status_and_mail_verification(kb):
@@ -323,15 +337,24 @@ def test_web_connection_status_and_mail_verification(kb):
         with request("/api/mail/status") as response:
             status = json.load(response)
         assert status["agents"][0]["agent_id"] == "@reviewer"
-        assert status["agents"][0]["verification_status"] == "observed"
+        # 三态的第一档：只登记了档案、还没跟任何消息发生过关系 → 未验证。
+        # 这一档最容易被吞掉——两态实现会把它说成「已观察到」，
+        # 等于在没有证据的情况下承认对方参与过协作。
+        assert status["agents"][0]["verification_status"] == "unverified"
         assert "online" not in status["agents"][0]
 
         message = mail.write_message(kb, sender="human", recipients="reviewer", body="verify Mail")
+        with request("/api/mail/status") as response:
+            status = json.load(response)
+        # 第二档：被投递过，但对方还没确认 → 已观察到。
+        assert status["agents"][0]["verification_status"] == "observed"
+
         visible = next(mail.iter_messages(kb, "reviewer"))
         mail.record_delivery(kb, "reviewer-s1", visible, agent_id="reviewer", machine_id="portable-test-machine")
         mail.acknowledge_delivery(kb, "reviewer-s1", message["message_id"], agent_id="reviewer", machine_id="portable-test-machine")
         with request("/api/mail/status") as response:
             status = json.load(response)
+        # 第三档：拿到了回执证据 → 已验证。
         assert status["agents"][0]["verification_status"] == "verified"
         assert status["agents"][0]["verification_evidence"]["evidence"] == "acknowledged"
     finally:
