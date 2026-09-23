@@ -2611,10 +2611,50 @@ def _instance_root(path: str | None) -> Path:
     return get_kb_root()
 
 
-def _mail_agent_id() -> str:
-    explicit = os.environ.get("OKS_AGENT_ID", "").strip()
-    if explicit:
-        return explicit
+# Characters that cannot appear in a single portable path component: the POSIX
+# separator, the Windows separator, and the characters Windows forbids in a
+# filename. The id becomes a directory name under ``mail/sent/`` and part of
+# the inbox slug, so a value containing any of them would write outside the
+# intended tree — or fail to be created at all.
+_UNSAFE_AGENT_ID_CHARS = '/\\:*?"<>|\0\n\r'
+# Windows rejects these device names in any directory, with or without an
+# extension: ``CON`` and ``CON.txt`` both resolve to the CON device.
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{index}" for index in range(1, 10)}
+    | {f"lpt{index}" for index in range(1, 10)}
+)
+
+
+def _is_safe_agent_id(agent_id: str) -> bool:
+    """Whether *agent_id* can serve as one portable path component."""
+    if agent_id in {".", ".."} or not agent_id.strip():
+        return False
+    if any(char in _UNSAFE_AGENT_ID_CHARS for char in agent_id):
+        return False
+    # ``CON`` is reserved and so is ``CON.txt``: compare the stem.
+    return agent_id.split(".")[0].lower() not in _WINDOWS_RESERVED_NAMES
+
+
+def _mail_agent_id(explicit: str = "") -> str:
+    """Resolve the sender identity without ever claiming to be the human.
+
+    Order: ``--from`` > ``OKS_AGENT_ID`` > the host session signal. An
+    environment that resolves to nothing returns ``"unknown"`` (which
+    normalises to ``sender_kind="agent"``): ``human`` is the review gate in
+    the OKS pipeline, so an unset environment must not silently sign mail as
+    the highest-trust identity.
+    """
+    for candidate in (explicit, os.environ.get("OKS_AGENT_ID", "")):
+        agent_id = candidate.strip()
+        if not agent_id:
+            continue
+        # The id is interpolated into mail/sent/{id}/ and into the inbox slug,
+        # so it must be one portable path component.
+        if not _is_safe_agent_id(agent_id):
+            console.print(f"[red]Invalid agent id:[/red] {agent_id!r}")
+            raise typer.Exit(1)
+        return agent_id
     # Native Claude launches child shell commands without the OKS-specific
     # identity override. Reuse the host signal already consumed by the
     # UserPromptSubmit hook so ack/reply commands keep the same Agent scope.
@@ -2622,7 +2662,7 @@ def _mail_agent_id() -> str:
         return "claude"
     if os.environ.get("CODEX_SESSION_ID", "").strip() or os.environ.get("CODEX_CLI", "").strip():
         return "codex"
-    return "human"
+    return "unknown"
 
 
 def _mail_session_id(value: str = "") -> str:
@@ -2681,6 +2721,7 @@ def _emit_mail_action(result: dict[str, Any], *, sender_kind: str, notify: bool,
 def mail_send(
     body: str = typer.Option(..., "--body", "-b", help="Mail body text"),
     to: str = typer.Option("@all", "--to", help="Recipient (@all or @agent-id)"),
+    from_agent: str = typer.Option("", "--from", help="Sender identity (default: resolve from the environment)"),
     type: str = typer.Option("message", "--type", help="message | conflict | handoff"),
     title: str = typer.Option("", "--title", "-t", help="Mail title"),
     priority: str = typer.Option("normal", "--priority", help="normal | urgent"),
@@ -2696,7 +2737,7 @@ def mail_send(
 ) -> None:
     """Write one canonical message and recipient projections."""
     root = _instance_root(path)
-    sender = _mail_agent_id()
+    sender = _mail_agent_id(from_agent)
     try:
         resolved_sender_kind = mail_domain.normalise_sender_kind(sender_kind, sender)
     except ValueError as exc:

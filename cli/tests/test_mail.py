@@ -202,6 +202,38 @@ def test_cli_send_never_silently_claims_human_identity(monkeypatch, tmp_path):
     assert any(row["meta"]["from"] == "human" and row["meta"]["sender_kind"] == "human" for row in rows)
 
 
+@pytest.mark.parametrize("bad_id", [
+    "CON", "con", "NUL", "COM1", "LPT9", "CON.txt", "aux.log",
+    "..", ".", "a/b", "a\\b", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b",
+])
+def test_cli_rejects_agent_ids_that_are_not_safe_path_components(monkeypatch, tmp_path, bad_id):
+    """``--from`` becomes a directory name and part of the inbox slug.
+
+    The Windows reserved device names, the characters Windows forbids in a
+    filename, and both path separators cannot form one portable path component.
+    Accepting them either escapes the intended tree here or fails at write time
+    on a platform other than the one that accepted the call.
+    """
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    result = CliRunner().invoke(cli.app, [
+        "mail", "send", "--from", bad_id, "--to", "@codex", "--body", "x", "--title", "t",
+    ])
+    assert result.exit_code == 1, result.stdout
+
+
+@pytest.mark.parametrize("good_id", ["human", "codex", "dsh-2", "writer_a", "CON2", "console"])
+def test_cli_accepts_agent_ids_that_are_safe_path_components(monkeypatch, tmp_path, good_id):
+    from knowledge_studio import cli
+
+    monkeypatch.setenv("OKS_ROOT", str(tmp_path))
+    result = CliRunner().invoke(cli.app, [
+        "mail", "send", "--from", good_id, "--to", "@codex", "--body", "x", "--title", "t",
+    ])
+    assert result.exit_code == 0, result.stdout
+
+
 def test_message_sender_kind_is_compatible_and_visible_in_snapshot(tmp_path):
     from knowledge_studio import mail
 
